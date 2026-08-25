@@ -12,10 +12,10 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
       with:
-        node-version: 18
+        bun-version: latest
 
     - name: Setup Java
       uses: actions/setup-java@v4
@@ -23,17 +23,32 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Install and Build Vite
+    - name: Install and Build Web App with Bun
       run: |
-        npm install
-        npx vite build
+        bun install
+        bun run build
 
     - name: Setup Capacitor and Build APK
       run: |
         npx @capacitor/cli init "VoltaLá" "com.voltalinha.app" --web-dir dist
         npx @capacitor/cli add android
         npx @capacitor/cli sync android
-        cd android && ./gradlew assembleDebug
+
+    - name: Add Android Permissions
+      run: |
+        MANIFEST="android/app/src/main/AndroidManifest.xml"
+        # Inserindo as permissões antes da tag <application>
+        sed -i '/<application/i \
+        <uses-permission android:name="android.permission.INTERNET" />\
+        <uses-permission android:name="android.permission.CAMERA" />\
+        <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\
+        <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\
+        <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\
+        <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />' "$MANIFEST"
+
+    - name: Build APK with Gradle
+      working-directory: ./android
+      run: ./gradlew assembleDebug
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
