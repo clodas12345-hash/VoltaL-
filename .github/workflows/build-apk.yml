@@ -32,9 +32,10 @@ jobs:
 
     - name: Setup Capacitor and Android Platform
       run: |
-        bun add @capacitor/core @capacitor/cli @capacitor/android
-        npx @capacitor/cli init "VoltaLá" "com.voltalinha.app" --web-dir dist
+        bun add @capacitor/core @capacitor/cli @capacitor/android @capacitor/assets
+        npx @capacitor/cli init "GKD Mobility" "com.voltalinha.app" --web-dir dist
         npx @capacitor/cli add android
+        npx @capacitor-assets/cli generate --android || true
         npx @capacitor/cli sync android
 
     - name: Add Android Permissions
