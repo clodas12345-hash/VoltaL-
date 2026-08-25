@@ -23,20 +23,17 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Install Dependencies & Build Web App
+    - name: Install and Build Vite
       run: |
         npm install
-        npm run build
+        npx vite build
 
-    - name: Add Capacitor and Android Platform
+    - name: Setup Capacitor and Build APK
       run: |
         npx @capacitor/cli init "VoltaLá" "com.voltalinha.app" --web-dir dist
         npx @capacitor/cli add android
         npx @capacitor/cli sync android
-
-    - name: Build APK with Gradle
-      working-directory: ./android
-      run: ./gradlew assembleDebug
+        cd android && ./gradlew assembleDebug
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
