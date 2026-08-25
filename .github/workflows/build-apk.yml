@@ -24,6 +24,8 @@ jobs:
         java-version: '21'
 
     - name: Install and Build Web App with Bun
+      env:
+        VITE_GOOGLE_MAPS_API_KEY: "AIzaSyAIJinnkUYTK9D-JfUkvUci-c2vDOVaQDo"
       run: |
         bun install
         bun run build
