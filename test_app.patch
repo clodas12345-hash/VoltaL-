@@ -1,0 +1,37 @@
+--- src/App.tsx
++++ src/App.tsx
+@@ -83,6 +83,12 @@
+ 
+ export default function App() {
+   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>(() => {
+     try {
+       const stored = localStorage.getItem(STORAGE_KEY);
+@@ -104,6 +110,13 @@
+   const [isDemoMode, setIsDemoMode] = useState(true);
+   const [focusLocationTrigger, setFocusLocationTrigger] = useState<{lat: number, lng: number, zoom: number, timestamp: number} | null>(null);
+   const [pendingPin, setPendingPin] = useState<{lat: number; lng: number; exactAddress?: string} | null>(null);
++  const [categories, setCategories] = useState<PlaceCategory[]>(() => {
++    try {
++      const stored = localStorage.getItem('pinpoint_categories');
++      if (stored) return JSON.parse(stored);
++    } catch (e) {}
++    return ['Padaria', 'Restaurante', 'Cafeteria', 'Supermercado', 'Farmácia', 'Shopping', 'Outros'];
++  });
+ 
+   // Save to localStorage whenever savedPlaces changes
+   useEffect(() => {
+@@ -113,6 +126,14 @@
+     } catch (e) {
+       console.error('Failed to save places', e);
+     }
+   }, [savedPlaces]);
++
++  useEffect(() => {
++    try {
++      localStorage.setItem('pinpoint_categories', JSON.stringify(categories));
++    } catch (e) {
++      console.error('Failed to save categories', e);
++    }
++  }, [categories]);
+ 
+   // Request real-time geolocation on mount or when requested

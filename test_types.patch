@@ -1,0 +1,8 @@
+--- src/types.ts
++++ src/types.ts
+@@ -1,4 +1,4 @@
+-export type PlaceCategory = 'Padaria' | 'Restaurante' | 'Cafeteria' | 'Supermercado' | 'Farmácia' | 'Shopping' | 'Outros';
++export type PlaceCategory = string;
+ 
+ export interface SavedPlace {
+   id: string;

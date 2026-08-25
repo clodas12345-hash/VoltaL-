@@ -1,0 +1,40 @@
+--- src/components/MapComponent.tsx
++++ src/components/MapComponent.tsx
+@@ -218,22 +218,20 @@
+               }
+             }
+-
+-            // Normal map click (no specific POI selected)
+-            if ((window as any).google && (window as any).google.maps && (window as any).google.maps.Geocoder) {
+-              const geocoder = new (window as any).google.maps.Geocoder();
+-              geocoder.geocode({ location: { lat, lng } }, (results: any, status: string) => {
+-                let exactAddress = '';
+-                if (status === 'OK' && results && results[0]) {
+-                  exactAddress = results[0].formatted_address;
+-                }
+-                onMapClickToAdd({ lat, lng, exactAddress: exactAddress || undefined } as any);
+-              });
+-            } else {
+-              onMapClickToAdd({ lat, lng });
+-            }
+           }
+         }}
++        onContextmenu={(e) => {
++          if (e.detail && e.detail.latLng) {
++            const lat = e.detail.latLng.lat;
++            const lng = e.detail.latLng.lng;
++            if ((window as any).google && (window as any).google.maps && (window as any).google.maps.Geocoder) {
++              const geocoder = new (window as any).google.maps.Geocoder();
++              geocoder.geocode({ location: { lat, lng } }, (results: any, status: string) => {
++                let exactAddress = '';
++                if (status === 'OK' && results && results[0]) {
++                  exactAddress = results[0].formatted_address;
++                }
++                onMapClickToAdd({ lat, lng, exactAddress: exactAddress || undefined } as any);
++              });
++            } else {
++              onMapClickToAdd({ lat, lng });
++            }
++          }
++        }}
+       >

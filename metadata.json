@@ -1,0 +1,6 @@
+{
+  "name": "VoltaLá",
+  "description": "O VoltaLá foi pensado para aquelas pessoas que passam por um estabelecimento e querem voltar depois mas não sabem onde era. Salve rapidamente o local, adicione fotos, horários, avaliações e use o navegador para voltar sem dificuldade.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
