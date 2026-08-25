@@ -28,8 +28,9 @@ jobs:
         bun install
         bun run build
 
-    - name: Setup Capacitor and Build APK
+    - name: Setup Capacitor and Android Platform
       run: |
+        bun add @capacitor/core @capacitor/cli @capacitor/android
         npx @capacitor/cli init "VoltaLá" "com.voltalinha.app" --web-dir dist
         npx @capacitor/cli add android
         npx @capacitor/cli sync android
@@ -37,7 +38,6 @@ jobs:
     - name: Add Android Permissions
       run: |
         MANIFEST="android/app/src/main/AndroidManifest.xml"
-        # Inserindo as permissões antes da tag <application>
         sed -i '/<application/i \
         <uses-permission android:name="android.permission.INTERNET" />\
         <uses-permission android:name="android.permission.CAMERA" />\
