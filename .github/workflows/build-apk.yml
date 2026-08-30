@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -10,55 +10,60 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Code
+    - name: Checkout Source Code
       uses: actions/checkout@v4
 
-    - name: Setup Bun
-      uses: oven-sh/setup-bun@v1
+    - name: Setup Node.js Environment
+      uses: actions/setup-node@v4
       with:
-        bun-version: latest
+        node-version: 20
+        cache: 'npm'
 
-    - name: Setup Java
+    - name: Setup Java JDK 17
       uses: actions/setup-java@v4
       with:
-        distribution: 'temurin'
-        java-version: '21'
+        distribution: 'zulu'
+        java-version: 17
 
-    - name: Install and Build Web App with Bun
-      env:
-        VITE_GOOGLE_MAPS_API_KEY: "AIzaSyAIJinnkUYTK9D-JfUkvUci-c2vDOVaQDo"
-      run: |
-        bun install
-        bun run build
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
 
-    - name: Setup Capacitor and Android Platform
+    - name: Install Project Dependencies
+      run: npm ci || npm install
+
+    - name: Build Web Application
+      run: npm run build
+
+    - name: Setup Android Project and Inject Custom Icons
       run: |
-        bun add @capacitor/core @capacitor/cli @capacitor/android @capacitor/assets
+        npm install @capacitor/core @capacitor/cli @capacitor/android
         npx @capacitor/cli init "VoltaLá" "com.voltala.app" --web-dir dist
         npx @capacitor/cli add android
-        npx @capacitor/assets generate --android || true
-        # Forçar substituição de todos os ícones nas pastas mipmap do Android
-        find android/app/src/main/res -name "ic_launcher*.png" -exec cp assets/icon.png {} \; || true
-        find android/app/src/main/res -name "ic_launcher_foreground.png" -exec cp assets/icon.png {} \; || true
+        
+        # Garante que o ícone oficial GKD Mobility substitua todos os ícones padrão do Android
+        for resdir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+          mkdir -p android/app/src/main/res/$resdir
+          cp assets/icon.png android/app/src/main/res/$resdir/ic_launcher.png
+          cp assets/icon.png android/app/src/main/res/$resdir/ic_launcher_round.png
+          cp assets/icon.png android/app/src/main/res/$resdir/ic_launcher_foreground.png
+        done
+        
         npx @capacitor/cli sync android
 
-    - name: Add Android Permissions
+    - name: Add Android Permissions to Manifest
       run: |
         MANIFEST="android/app/src/main/AndroidManifest.xml"
-        sed -i '/<application/i \
-        <uses-permission android:name="android.permission.INTERNET" />\
-        <uses-permission android:name="android.permission.CAMERA" />\
-        <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\
-        <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\
-        <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\
-        <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />' "$MANIFEST"
+        sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.INTERNET" />' $MANIFEST
 
-    - name: Build APK with Gradle
-      working-directory: ./android
-      run: ./gradlew assembleDebug
+    - name: Build Debug APK with Gradle
+      run: |
+        cd android
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon
 
-    - name: Upload APK Artifact
+    - name: Upload Finished APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
         path: android/app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 7
