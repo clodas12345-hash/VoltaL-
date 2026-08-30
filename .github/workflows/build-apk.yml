@@ -37,6 +37,9 @@ jobs:
         npx @capacitor/cli init "VoltaLá" "com.voltala.app" --web-dir dist
         npx @capacitor/cli add android
         npx @capacitor/assets generate --android || true
+        # Forçar substituição de todos os ícones nas pastas mipmap do Android
+        find android/app/src/main/res -name "ic_launcher*.png" -exec cp assets/icon.png {} \; || true
+        find android/app/src/main/res -name "ic_launcher_foreground.png" -exec cp assets/icon.png {} \; || true
         npx @capacitor/cli sync android
 
     - name: Add Android Permissions
