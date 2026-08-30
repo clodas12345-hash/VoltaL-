@@ -13,6 +13,9 @@ export function SettingsModal({ onClose, categories, setCategories }: SettingsMo
   const [newCat, setNewCat] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [customPreview, setCustomPreview] = useState<string | null>(() => {
+    return localStorage.getItem('voltala_custom_icon') || null;
+  });
   const [iconTimestamp, setIconTimestamp] = useState(Date.now());
 
   const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -24,6 +27,8 @@ export function SettingsModal({ onClose, categories, setCategories }: SettingsMo
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
+      setCustomPreview(base64);
+      localStorage.setItem('voltala_custom_icon', base64);
       try {
         const res = await fetch('/api/update-icon', {
           method: 'POST',
@@ -33,7 +38,7 @@ export function SettingsModal({ onClose, categories, setCategories }: SettingsMo
         if (res.ok) {
           setUploadSuccess(true);
           setIconTimestamp(Date.now());
-          setTimeout(() => setUploadSuccess(false), 3500);
+          setTimeout(() => setUploadSuccess(false), 5000);
         }
       } catch (err) {
         console.error('Erro ao enviar ícone', err);
@@ -144,7 +149,7 @@ export function SettingsModal({ onClose, categories, setCategories }: SettingsMo
               <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 shadow-lg text-center flex flex-col items-center">
                 <div className="relative mb-3">
                   <img 
-                    src={`/icon.png?t=${iconTimestamp}`} 
+                    src={customPreview || `/icon.png?t=${iconTimestamp}`} 
                     alt="Ícone GKD Mobility" 
                     className="w-24 h-24 rounded-2xl shadow-xl shadow-blue-500/20 border-2 border-slate-700/60 object-contain bg-white"
                   />
@@ -171,7 +176,7 @@ export function SettingsModal({ onClose, categories, setCategories }: SettingsMo
                   </label>
 
                   <a 
-                    href="/icon.png" 
+                    href={customPreview || "/icon.png"} 
                     download="gkd-mobility-icone.png" 
                     className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all shadow border border-slate-700 active:scale-95"
                   >
@@ -181,7 +186,7 @@ export function SettingsModal({ onClose, categories, setCategories }: SettingsMo
 
                 {uploadSuccess && (
                   <div className="mt-3 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs px-3 py-2 rounded-xl flex items-center gap-2">
-                    <Check className="w-4 h-4" /> Arquivo original gravado com 100% de fidelidade!
+                    <Check className="w-4 h-4" /> Foto original gravada! Agora faça o "Export to GitHub" para gerar o APK com ela.
                   </div>
                 )}
               </div>
