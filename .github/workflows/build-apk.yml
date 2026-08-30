@@ -35,6 +35,7 @@ jobs:
 
     - name: Setup Android Project with Stable Capacitor 5
       run: |
+        # Usar Capacitor v5 que possui total compatibilidade com Java 17 e Gradle do Android
         npm install @capacitor/core@5 @capacitor/cli@5 @capacitor/android@5
         npx cap init "VoltaLá" "com.voltala.app" --web-dir dist
         npx cap add android
