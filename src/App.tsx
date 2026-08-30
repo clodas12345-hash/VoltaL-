@@ -7,11 +7,12 @@ import { SettingsModal } from './components/SettingsModal';
 import { SearchProximityListModal } from './components/SearchProximityListModal';
 import { RadarModal } from './components/RadarModal';
 import { RadarAlertPopup } from './components/RadarAlertPopup';
-import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, RadarAlert } from './types';
+import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, RadarAlert, getZoomForRadius } from './types';
 import { Compass, Navigation, Bookmark, Plus, MapPin, X, Radio } from 'lucide-react';
 import { InAppBrowser } from './components/InAppBrowser';
 import { playRadarDetectionChime } from './utils/audio';
 import { getDistanceMeters, normalizeText, generateDemoRadarPlaces } from './utils/radarScanner';
+import { isValidAttachment } from './utils/fileAttachment';
 
 const REAL_SP_ESTABLISHMENTS = [
   // Mexican food establishments
@@ -206,9 +207,7 @@ export default function App() {
         if (Array.isArray(parsed)) {
           return parsed.map((p) => ({
             ...p,
-            customPhotos: (p.customPhotos || []).filter(
-              (photo) => typeof photo === 'string' && (photo.startsWith('data:image/') || photo.startsWith('http')) && photo.length > 50
-            ),
+            customPhotos: (p.customPhotos || []).filter(isValidAttachment),
           }));
         }
       }
@@ -270,6 +269,16 @@ export default function App() {
       localStorage.setItem('pinpoint_search_radius_meters', radius.toString());
     } catch (e) {}
     showToast(`Raio de pesquisa ajustado para ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`}`);
+
+    // Immediately adjust camera and zoom level on the map to match the new radius
+    const targetZoom = getZoomForRadius(radius);
+    const center = userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : { lat: -23.5505, lng: -46.6333 };
+    setFocusLocationTrigger({
+      lat: center.lat,
+      lng: center.lng,
+      zoom: targetZoom,
+      timestamp: Date.now()
+    });
   };
 
   // Radar state & continuous scanner
@@ -335,16 +344,6 @@ export default function App() {
               lng: realLng,
               heading: realHeading ?? (prev?.heading || null)
             }));
-
-            // In tracking / radar mode, keep map centered on live coordinates
-            if (isTrackingRef.current || radarConfig.isActive) {
-              setFocusLocationTrigger({
-                lat: realLat,
-                lng: realLng,
-                zoom: 18,
-                timestamp: Date.now()
-              });
-            }
           },
           (err) => {
             console.warn('Radar real GPS heartbeat warning:', err);
@@ -496,10 +495,11 @@ export default function App() {
         setPreFilterZoom(currentMapZoom);
       }
       setSearchQuery(targetQuery);
+      const targetZoom = getZoomForRadius(searchRadius);
       setFocusLocationTrigger({
         lat: userLocation ? userLocation.lat : -23.5505,
         lng: userLocation ? userLocation.lng : -46.6333,
-        zoom: 14,
+        zoom: targetZoom,
         timestamp: Date.now()
       });
     }
@@ -507,39 +507,52 @@ export default function App() {
   };
 
   useEffect(() => {
-    let lastUpdate = 0;
+    let animFrameId: number | null = null;
+    let pendingHeading: number | null = null;
+    let prevAppliedHeading = -999;
     let hasAbsolute = false;
 
+    const applyHeading = () => {
+      if (pendingHeading !== null) {
+        if (Math.abs(pendingHeading - prevAppliedHeading) >= 0.4) {
+          prevAppliedHeading = pendingHeading;
+          setCompassHeading(Math.round(pendingHeading * 10) / 10);
+        }
+        pendingHeading = null;
+      }
+      animFrameId = null;
+    };
+
     const handleOrientation = (event: any) => {
-      const now = Date.now();
-      if (now - lastUpdate < 60) return; // ~15 FPS
-      
       if (event.type === 'deviceorientationabsolute') {
         hasAbsolute = true;
       }
 
-      let heading = null;
+      let heading: number | null = null;
       if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
-        // iOS
+        // iOS Safari gives 0-360 directly (0 is North)
         heading = event.webkitCompassHeading;
-      } else if (event.alpha !== null) {
-        // Android
+      } else if (event.alpha !== null && event.alpha !== undefined) {
+        // Android standard (alpha: 0-360)
         if (event.type === 'deviceorientation' && hasAbsolute) {
           return; // Ignore relative orientation if absolute is available
         }
-        heading = 360 - event.alpha;
+        heading = (360 - event.alpha) % 360;
       }
       
-      if (heading !== null) {
-        lastUpdate = now;
-        setCompassHeading(Math.round(heading));
+      if (heading !== null && !isNaN(heading)) {
+        pendingHeading = (heading + 360) % 360;
+        if (!animFrameId) {
+          animFrameId = requestAnimationFrame(applyHeading);
+        }
       }
     };
 
-    window.addEventListener('deviceorientationabsolute', handleOrientation);
-    window.addEventListener('deviceorientation', handleOrientation);
+    window.addEventListener('deviceorientationabsolute', handleOrientation, { passive: true });
+    window.addEventListener('deviceorientation', handleOrientation, { passive: true });
 
     return () => {
+      if (animFrameId) cancelAnimationFrame(animFrameId);
       window.removeEventListener('deviceorientationabsolute', handleOrientation);
       window.removeEventListener('deviceorientation', handleOrientation);
     };
@@ -647,7 +660,7 @@ export default function App() {
             setFocusLocationTrigger({
               lat: realLat,
               lng: realLng,
-              zoom: 18,
+              zoom: 19,
               timestamp: Date.now()
             });
             showToast('Centralizado na sua localização real');
@@ -701,6 +714,7 @@ export default function App() {
               prevHeadingRef.current = newHeading;
             }
 
+            const isFirstAcquisition = !prevLocRef.current;
             prevLocRef.current = { lat: newLat, lng: newLng };
 
             const loc = {
@@ -710,20 +724,20 @@ export default function App() {
             };
             
             setUserLocation((prev) => {
-              // Center on initial location fetch or if tracking is active or radar is active
-              if (!prev || isTrackingRef.current || radarConfig.isActive) {
-                setFocusLocationTrigger({
-                  lat: loc.lat,
-                  lng: loc.lng,
-                  zoom: 18,
-                  timestamp: Date.now()
-                });
-              }
               if (loc.heading === null && prev && prev.heading !== null) {
                 loc.heading = prev.heading;
               }
               return loc;
             });
+
+            if (isFirstAcquisition) {
+              setFocusLocationTrigger({
+                lat: loc.lat,
+                lng: loc.lng,
+                zoom: 18,
+                timestamp: Date.now()
+              });
+            }
           },
           (error) => {
             console.error('Error in watchPosition:', error);
@@ -737,7 +751,7 @@ export default function App() {
               showToast('Não foi possível obter sua localização real. Verifique as permissões de GPS.');
             }
           },
-          { enableHighAccuracy: highAccuracy, timeout: 15000, maximumAge: 0 }
+          { enableHighAccuracy: highAccuracy, timeout: 6000, maximumAge: 0 }
         );
       };
 
@@ -1044,6 +1058,12 @@ export default function App() {
         onSelectPlaceToView={(place) => {
           setTracking(false);
           setSelectedPlaceToView(place);
+          setFocusLocationTrigger({
+            lat: place.lat,
+            lng: place.lng,
+            zoom: 19,
+            timestamp: Date.now()
+          });
         }}
         activeSelectedPlace={selectedPlaceToView}
         onClearActiveSelect={() => {
@@ -1080,6 +1100,12 @@ export default function App() {
         savedPlaces={savedPlaces}
         onSelectPlace={(place) => {
           setSelectedPlaceToView(place);
+          setFocusLocationTrigger({
+            lat: place.lat,
+            lng: place.lng,
+            zoom: 19,
+            timestamp: Date.now()
+          });
         }}
         onEditPlace={(place) => {
           setSelectedPlaceToView(place);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig } from '../types';
+import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, getZoomForRadius } from '../types';
 import { Star, MapPin, Navigation, Bookmark, Plus, Minus, Search, Compass, Layers, LocateFixed, X, Radio } from 'lucide-react';
 import { getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 
@@ -34,11 +34,62 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Farmácia': 'bg-emerald-500',
   'Shopping': 'bg-purple-600',
   'Boate': 'bg-pink-600',
+  'Automotivo': 'bg-blue-700',
   'Outros': 'bg-slate-600',
 };
 
 // Sample mock POIs for demo search including Mexican, Maniçoba and other popular spots
 const MOCK_POIS: MapPinType[] = [
+  { 
+    id: 'demo-car-1', 
+    name: 'Avelinos Car - Centro Automotivo & Oficina', 
+    address: 'Av. Conselheiro Carrão, 1420 - Vila Carrão, São Paulo - SP', 
+    lat: -23.5480, 
+    lng: -46.5360, 
+    rating: 4.9, 
+    userRatingsTotal: 340,
+    category: 'Automotivo',
+    phoneNumber: '+55 11 2092-1420',
+    website: 'https://maps.google.com',
+    priceLevel: 'R$ 80 - R$ 350 por serviço',
+    peakHours: 'Pico das 09h00 às 17h00',
+    photoUrl: 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=600&auto=format&fit=crop&q=80',
+    description: 'Avelinos Car: oficina mecânica especializada, revisão preventiva, freios, suspensão, injeção eletrônica e troca de óleo.',
+    openingHours: [
+      'segunda-feira: 08:00 – 18:00',
+      'terça-feira: 08:00 – 18:00',
+      'quarta-feira: 08:00 – 18:00',
+      'quinta-feira: 08:00 – 18:00',
+      'sexta-feira: 08:00 – 18:00',
+      'sábado: 08:00 – 13:00',
+      'domingo: Fechado'
+    ],
+  },
+  { 
+    id: 'demo-car-2', 
+    name: 'Avelino Auto Car & Estética Automotiva', 
+    address: 'Rua Itinguçu, 1540 - Cidade Patriarca, São Paulo - SP', 
+    lat: -23.5395, 
+    lng: -46.5075, 
+    rating: 4.8, 
+    userRatingsTotal: 195,
+    category: 'Automotivo',
+    phoneNumber: '+55 11 2685-1540',
+    website: 'https://maps.google.com',
+    priceLevel: 'R$ 60 - R$ 250 por serviço',
+    peakHours: 'Pico das 08h30 às 16h30',
+    photoUrl: 'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=600&auto=format&fit=crop&q=80',
+    description: 'Serviços automotivos completos, funilaria rápida, polimento, cristalização e mecânica geral.',
+    openingHours: [
+      'segunda-feira: 08:00 – 18:00',
+      'terça-feira: 08:00 – 18:00',
+      'quarta-feira: 08:00 – 18:00',
+      'quinta-feira: 08:00 – 18:00',
+      'sexta-feira: 08:00 – 18:00',
+      'sábado: 08:00 – 14:00',
+      'domingo: Fechado'
+    ],
+  },
   { 
     id: 'demo-mex-1', 
     name: 'El Tranvía Taquería & Bar Mexicano', 
@@ -503,14 +554,23 @@ export function DemoMap({
   const initialPinchDistRef = React.useRef<number | null>(null);
   const initialPinchZoomRef = React.useRef<number>(19);
   const lastTapRef = React.useRef<number>(0);
+  const lastProcessedFocusTimestampRef = React.useRef<number>(0);
 
-  // Automatically activate Following / Real Time when radar is active or tracking is requested
+  // Global mouse up / touch end listeners to guarantee dragging state is never stuck
   useEffect(() => {
-    if (radarConfig?.isActive || isTrackingLocation) {
-      setIsFollowing(true);
-      setPanOffset({ x: 0, y: 0 });
-    }
-  }, [radarConfig?.isActive, isTrackingLocation]);
+    const handleGlobalRelease = () => {
+      setIsDragging(false);
+      initialPinchDistRef.current = null;
+    };
+    window.addEventListener('mouseup', handleGlobalRelease);
+    window.addEventListener('touchend', handleGlobalRelease);
+    window.addEventListener('touchcancel', handleGlobalRelease);
+    return () => {
+      window.removeEventListener('mouseup', handleGlobalRelease);
+      window.removeEventListener('touchend', handleGlobalRelease);
+      window.removeEventListener('touchcancel', handleGlobalRelease);
+    };
+  }, []);
 
   useEffect(() => {
     if (onZoomChange) {
@@ -533,13 +593,42 @@ export function DemoMap({
   }, [resetNorthTrigger]);
 
   useEffect(() => {
-    if (focusLocationTrigger) {
+    if (focusLocationTrigger && focusLocationTrigger.timestamp !== lastProcessedFocusTimestampRef.current) {
+      lastProcessedFocusTimestampRef.current = focusLocationTrigger.timestamp;
+      setIsFollowing(false);
       setPanOffset({ x: 0, y: 0 });
       if (focusLocationTrigger.zoom !== undefined) {
         setZoom(focusLocationTrigger.zoom);
       }
     }
   }, [focusLocationTrigger]);
+
+  // Adjust zoom dynamically whenever searchRadiusMeters changes
+  const prevRadiusRef = React.useRef<number>(searchRadiusMeters);
+  useEffect(() => {
+    if (prevRadiusRef.current !== searchRadiusMeters) {
+      prevRadiusRef.current = searchRadiusMeters;
+      const targetZoom = getZoomForRadius(searchRadiusMeters || 1500);
+      setZoom(targetZoom);
+    }
+  }, [searchRadiusMeters]);
+
+  const lastSearchQueryRef = React.useRef<string>('');
+  useEffect(() => {
+    if (!searchQuery) {
+      lastSearchQueryRef.current = '';
+      return;
+    }
+    const searchKey = `${searchQuery.trim().toLowerCase()}_${searchRadiusMeters}`;
+    if (lastSearchQueryRef.current === searchKey) return;
+    lastSearchQueryRef.current = searchKey;
+
+    // Quando pesquisa um estabelecimento, afastar e enquadrar o zoom conforme o raio escolhido
+    setIsFollowing(false);
+    setPanOffset({ x: 0, y: 0 });
+    const targetZoom = getZoomForRadius(searchRadiusMeters || 1500);
+    setZoom(targetZoom);
+  }, [searchQuery, searchRadiusMeters]);
 
   // Filter saved places
   const visibleSaved = savedPlaces.filter(
@@ -551,32 +640,49 @@ export function DemoMap({
     const center = userLocation || { lat: -23.5505, lng: -46.6333 };
     const distKm = Math.hypot((p.lat - center.lat) * 111.32, (p.lng - center.lng) * 111.32 * Math.cos(center.lat * Math.PI / 180));
     const maxDistKm = (searchRadiusMeters || 1500) / 1000;
-    if (distKm > maxDistKm) return false;
 
     const isCategoryQuery = searchQuery === selectedCategoryFilter;
     let matchesQuery = true;
+    let isSpecificDirectNameMatch = false;
+
     if (searchQuery && !isCategoryQuery) {
-      const q = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase().trim();
       const nameLower = p.name.toLowerCase();
       const catLower = (p.category || '').toLowerCase();
+      const addressLower = p.address.toLowerCase();
 
-      if (q.includes('supermercado') || q.includes('mercado')) {
-        if (nameLower.includes('posto') || nameLower.includes('bar') || catLower.includes('posto') || catLower.includes('bar')) return false;
-      }
-      if (q.includes('posto') || q.includes('gasolina')) {
-        if (nameLower.includes('supermercado') || nameLower.includes('bar') || catLower.includes('supermercado') || catLower.includes('bar')) return false;
-      }
-      if (q.includes('bar')) {
-        if (nameLower.includes('supermercado') || nameLower.includes('posto') || catLower.includes('supermercado') || catLower.includes('posto')) return false;
-      }
-
-      const isBoateSearch = q.includes('boate') || q.includes('balada') || q.includes('club') || q.includes('noturn');
-      if (isBoateSearch && p.category === 'Boate') {
+      // Check if user is searching directly for a specific business name (e.g. "Avelinos Car", "El Tranvía", "Tacacá")
+      if (nameLower.includes(q) || q.split(' ').some(word => word.length > 3 && nameLower.includes(word))) {
+        isSpecificDirectNameMatch = true;
         matchesQuery = true;
       } else {
-        matchesQuery = nameLower.includes(q) || p.address.toLowerCase().includes(q) || catLower.includes(q);
+        const isGenericCategory = ['supermercado', 'mercado', 'posto', 'gasolina', 'bar', 'boteco', 'restaurante'].includes(q);
+        if (isGenericCategory) {
+          if (q.includes('supermercado') || q.includes('mercado')) {
+            if (nameLower.includes('posto') || nameLower.includes('bar') || catLower.includes('posto') || catLower.includes('bar')) return false;
+          }
+          if (q.includes('posto') || q.includes('gasolina')) {
+            if (nameLower.includes('supermercado') || nameLower.includes('bar') || catLower.includes('supermercado') || catLower.includes('bar')) return false;
+          }
+          if (q.includes('bar')) {
+            if (nameLower.includes('supermercado') || nameLower.includes('posto') || catLower.includes('supermercado') || catLower.includes('posto')) return false;
+          }
+        }
+
+        const isBoateSearch = q.includes('boate') || q.includes('balada') || q.includes('club') || q.includes('noturn');
+        if (isBoateSearch && p.category === 'Boate') {
+          matchesQuery = true;
+        } else {
+          matchesQuery = nameLower.includes(q) || addressLower.includes(q) || catLower.includes(q);
+        }
       }
     }
+
+    // Direct business searches can be found across the city, broad categories respect radius
+    if (!isSpecificDirectNameMatch && distKm > maxDistKm) {
+      return false;
+    }
+
     const matchesCategory = selectedCategoryFilter === 'Todos' || p.category === selectedCategoryFilter;
     return matchesQuery && matchesCategory;
   });
@@ -675,9 +781,9 @@ export function DemoMap({
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     if (e.deltaY < 0) {
-      setZoom((z) => Math.min(z + 1, 20));
+      setZoom((z) => Math.min(z + 1, 21));
     } else {
-      setZoom((z) => Math.max(z - 1, 8));
+      setZoom((z) => Math.max(z - 1, 3));
     }
   };
 
@@ -696,7 +802,7 @@ export function DemoMap({
     >
       {/* Interactive Grid Background mimicking a map */}
       <div 
-        className="absolute inset-[-50%] w-[200%] h-[200%] opacity-80 pointer-events-none transition-transform duration-75"
+        className={`absolute inset-[-50%] w-[200%] h-[200%] opacity-80 pointer-events-none ${isDragging ? 'transition-none' : 'transition-transform duration-100 ease-out'}`}
         style={{
           backgroundImage: `
             linear-gradient(to right, #cbd5e1 1px, transparent 1px),
@@ -717,7 +823,7 @@ export function DemoMap({
       </div>
 
       <div 
-        className="absolute inset-0 flex items-center justify-center pointer-events-none transition-transform duration-500"
+        className={`absolute inset-0 flex items-center justify-center pointer-events-none ${isDragging ? 'transition-none' : 'transition-transform duration-200 ease-out'}`}
         style={{ 
           transform: isFollowing ? `translate(${panOffset.x}px, ${panOffset.y}px) perspective(1000px) rotateX(30deg) scale(1.1)` : `translate(${panOffset.x}px, ${panOffset.y}px)`,
           transformStyle: isFollowing ? 'preserve-3d' : 'flat'
@@ -885,7 +991,7 @@ export function DemoMap({
 
 
       {/* Zoom and Tempo Real Controls at bottom-right */}
-      <div className="absolute right-4 bottom-24 z-20 flex flex-col items-end gap-2 pointer-events-auto">
+      <div className="absolute right-3 bottom-6 sm:right-4 sm:bottom-8 z-20 flex flex-col items-end gap-1.5 sm:gap-2 pointer-events-auto">
         <button
           onClick={() => {
             const nextVal = !isFollowing;
@@ -895,7 +1001,7 @@ export function DemoMap({
               if (onLocateUser) onLocateUser();
             }
           }}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl shadow-lg border text-xs font-semibold backdrop-blur-sm active:scale-95 transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl shadow-lg border text-xs font-semibold backdrop-blur-sm active:scale-95 transition-all cursor-pointer ${
             (isFollowing || radarConfig?.isActive) 
               ? 'bg-blue-600 text-white border-blue-500 shadow-blue-500/25 ring-2 ring-emerald-400/50' 
               : 'bg-white/95 text-slate-700 border-slate-200 hover:bg-white'
@@ -903,14 +1009,27 @@ export function DemoMap({
           title="Alternar modo Tempo Real (GPS dinâmico)"
           aria-label="Ativar modo Tempo Real"
         >
-          <Compass className={`w-4 h-4 ${(isFollowing || radarConfig?.isActive) ? 'animate-spin text-white' : 'text-blue-600'}`} style={{ animationDuration: (isFollowing || radarConfig?.isActive) ? '6s' : '0s' }} />
+          <Compass className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${(isFollowing || radarConfig?.isActive) ? 'animate-spin text-white' : 'text-blue-600'}`} style={{ animationDuration: (isFollowing || radarConfig?.isActive) ? '6s' : '0s' }} />
           <span>{(isFollowing || radarConfig?.isActive) ? 'Tempo Real: Ativo' : 'Tempo Real: Fixo'}</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setPanOffset({ x: 0, y: 0 });
+            if (onLocateUser) onLocateUser();
+          }}
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl shadow-lg border text-xs font-semibold backdrop-blur-sm active:scale-95 transition-all bg-white/95 text-slate-700 border-slate-200 hover:bg-white cursor-pointer"
+          title="Centralizar na localização atual (zoom livre)"
+          aria-label="Centralizar na localização atual"
+        >
+          <LocateFixed className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
+          <span>Localizar</span>
         </button>
 
         <div className="flex flex-col bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-slate-200/90 overflow-hidden">
           <button
             onClick={() => setZoom(z => Math.min(21, z + 1))}
-            className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 text-slate-700 font-bold text-lg border-b border-slate-200 active:bg-slate-200 transition-all"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center hover:bg-slate-100 text-slate-700 font-bold text-lg sm:text-xl border-b border-slate-200 active:bg-slate-200 transition-all cursor-pointer select-none"
             title="Aproximar Zoom (+)"
             aria-label="Aproximar Zoom"
           >
@@ -918,7 +1037,7 @@ export function DemoMap({
           </button>
           <button
             onClick={() => setZoom(z => Math.max(3, z - 1))}
-            className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 text-slate-700 font-bold text-lg active:bg-slate-200 transition-all"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center hover:bg-slate-100 text-slate-700 font-bold text-lg sm:text-xl active:bg-slate-200 transition-all cursor-pointer select-none"
             title="Afastar Zoom (-)"
             aria-label="Afastar Zoom"
           >

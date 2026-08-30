@@ -59,4 +59,14 @@ export interface RadarConfig {
   vibrationEnabled: boolean;
 }
 
+export const getZoomForRadius = (radiusMeters: number): number => {
+  if (radiusMeters <= 500) return 16;
+  if (radiusMeters <= 1000) return 15;
+  if (radiusMeters <= 1500) return 14.5;
+  if (radiusMeters <= 3000) return 13.5;
+  if (radiusMeters <= 5000) return 12.8;
+  if (radiusMeters <= 10000) return 11.5;
+  return 10.5; // 20km
+};
+
 

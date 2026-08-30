@@ -2,18 +2,24 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, MapPin, Navigation, Star, Sparkles } from 'lucide-react';
 
-export function GKDLogo({ className = "h-8" }: { className?: string }) {
+export function GKDLogo({ 
+  className = "h-8",
+  showTextOnMobile = false 
+}: { 
+  className?: string;
+  showTextOnMobile?: boolean;
+}) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
     <>
       <div 
         onClick={() => setIsOpen(true)}
-        className={`relative flex items-center gap-2 select-none shrink-0 cursor-pointer hover:opacity-85 transition-opacity ${className}`}
+        className={`relative flex items-center gap-1.5 select-none shrink-0 cursor-pointer hover:opacity-85 transition-opacity ${className}`}
         title="Clique para ver sobre o aplicativo"
       >
         {/* Icon Graphic */}
-        <div className="relative w-8 h-8 flex items-center justify-center shrink-0">
+        <div className="relative w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center shrink-0">
           <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-sm" fill="none" xmlns="http://www.w3.org/2000/svg">
             {/* Folded Map Base */}
             <path d="M15 45L45 35L75 45L85 40V75L75 80L45 70L15 80V45Z" fill="#0B1B3D" />
@@ -28,11 +34,11 @@ export function GKDLogo({ className = "h-8" }: { className?: string }) {
           </svg>
         </div>
         {/* Text Mark */}
-        <div className="flex flex-col">
-          <span className="font-black tracking-tight text-[#0B1B3D] text-base leading-none flex items-center">
+        <div className={`flex-col ${showTextOnMobile ? 'flex' : 'hidden sm:flex'}`}>
+          <span className="font-black tracking-tight text-[#0B1B3D] text-sm sm:text-base leading-none flex items-center">
             GKD
           </span>
-          <span className="text-[7.5px] font-extrabold tracking-[0.25em] text-[#0B1B3D] opacity-80 uppercase mt-0.5">
+          <span className="text-[7px] sm:text-[7.5px] font-extrabold tracking-[0.25em] text-[#0B1B3D] opacity-80 uppercase mt-0.5">
             MOBILITY
           </span>
         </div>

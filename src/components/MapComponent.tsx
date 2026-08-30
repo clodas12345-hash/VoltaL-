@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { Component, ReactNode, useEffect, useState, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
 import { ApiKeySplash } from './ApiKeySplash';
 import { DemoMap } from './DemoMap';
-import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig } from '../types';
-import { Star, MapPin as PinIcon, Navigation, Bookmark, ExternalLink, X, Volume2, VolumeX, CornerUpLeft, CornerUpRight, ArrowUp, Compass, LocateFixed, Plus, Minus, Radio } from 'lucide-react';
+import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, getZoomForRadius } from '../types';
+import { Star, MapPin as PinIcon, Navigation, Bookmark, ExternalLink, X, Volume2, VolumeX, CornerUpLeft, CornerUpRight, ArrowUp, Compass, LocateFixed, Plus, Minus, Radio, RefreshCw } from 'lucide-react';
 import { getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 
 const API_KEY =
@@ -70,6 +70,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Farmácia': '#10b981',    // emerald
   'Shopping': '#8b5cf6',    // purple
   'Boate': '#ec4899',       // pink
+  'Automotivo': '#2563eb',  // royal blue
   'Outros': '#64748b',      // slate
 };
 
@@ -193,6 +194,7 @@ function InnerMapController({
   onStreetViewChange,
   mapHeading,
   isTrackingLocation,
+  onLocateUser,
   navigationTarget,
   onStopNavigation,
   resetNorthTrigger,
@@ -269,6 +271,23 @@ function InnerMapController({
     };
   }, [map, mapsLib, userLocation?.lat, userLocation?.lng, radarConfig?.isActive, radarConfig?.radiusMeters, searchRadiusMeters]);
 
+  // Adjust map viewport and zoom automatically whenever searchRadiusMeters is changed
+  const prevSearchRadiusRef = useRef<number>(searchRadiusMeters);
+  useEffect(() => {
+    if (!map) return;
+    if (prevSearchRadiusRef.current !== searchRadiusMeters) {
+      prevSearchRadiusRef.current = searchRadiusMeters;
+
+      const centerCoords = userLocation 
+        ? { lat: userLocation.lat, lng: userLocation.lng } 
+        : (map.getCenter() ? { lat: map.getCenter()!.lat(), lng: map.getCenter()!.lng() } : { lat: -23.5505, lng: -46.6333 });
+
+      const targetZoom = getZoomForRadius(searchRadiusMeters || 1500);
+      safePanTo(centerCoords);
+      map.setZoom(targetZoom);
+    }
+  }, [searchRadiusMeters, map, userLocation]);
+
   // Keep following mode active when radar is on or tracking is requested
   useEffect(() => {
     if (radarConfig?.isActive || isTrackingLocation) {
@@ -339,7 +358,10 @@ function InnerMapController({
   const [directionsResult, setDirectionsResult] = useState<google.maps.DirectionsResult | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const lastSpokenStepRef = useRef<number>(-1);
+  const isRoutingInProgressRef = useRef(false);
+  const lastRecalculateTimeRef = useRef<number>(0);
 
   // Helper function to strip HTML from directions
   const stripHtml = (html: string) => {
@@ -360,6 +382,56 @@ function InnerMapController({
               Math.sin(Δλ/2) * Math.sin(Δλ/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
+  }
+
+  // Helper for perpendicular distance to route line segment (meters)
+  function getDistanceToSegmentMeters(
+    p: { lat: number; lng: number },
+    a: { lat: number; lng: number },
+    b: { lat: number; lng: number }
+  ): number {
+    const latMid = ((a.lat + b.lat + p.lat) / 3) * (Math.PI / 180);
+    const mPerLat = 111132;
+    const mPerLng = 111320 * Math.cos(latMid);
+
+    const px = (p.lng - a.lng) * mPerLng;
+    const py = (p.lat - a.lat) * mPerLat;
+    const bx = (b.lng - a.lng) * mPerLng;
+    const by = (b.lat - a.lat) * mPerLat;
+
+    const segLenSq = bx * bx + by * by;
+    if (segLenSq === 0) {
+      return Math.hypot(px, py);
+    }
+
+    const t = Math.max(0, Math.min(1, (px * bx + py * by) / segLenSq));
+    const projX = t * bx;
+    const projY = t * by;
+
+    return Math.hypot(px - projX, py - projY);
+  }
+
+  // Calculate true minimum perpendicular distance from user to route path segments
+  function getMinDistanceToRoutePath(
+    user: { lat: number; lng: number },
+    path: google.maps.LatLng[]
+  ): number {
+    if (!path || path.length === 0) return Infinity;
+    if (path.length === 1) {
+      return getDistance(user, { lat: path[0].lat(), lng: path[0].lng() });
+    }
+
+    let min = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+      const p1 = { lat: path[i].lat(), lng: path[i].lng() };
+      const p2 = { lat: path[i + 1].lat(), lng: path[i + 1].lng() };
+      const d = getDistanceToSegmentMeters(user, p1, p2);
+      if (d < min) {
+        min = d;
+        if (min < 3) return min; // If within 3m of road center, user is perfectly on route
+      }
+    }
+    return min;
   }
 
   // Dynamic zoom based on approach distance to destination (18, 19, 20)
@@ -392,7 +464,7 @@ function InnerMapController({
 
   const lastRoutedTargetRef = useRef<{lat: number, lng: number} | null>(null);
 
-  // Handle routing with automatic off-route recalculation
+  // Handle routing with fast, low-threshold off-route recalculation
   useEffect(() => {
     if (!directionsService || !directionsRenderer) return;
 
@@ -400,36 +472,57 @@ function InnerMapController({
       directionsRenderer.setDirections({ routes: [] });
       setDirectionsResult(null);
       lastRoutedTargetRef.current = null;
+      setIsRecalculating(false);
+      isRoutingInProgressRef.current = false;
       return;
     }
 
-    // Check if user is off-route (distance to route polyline or steps > 35 meters)
-    let isOffRoute = false;
-    if (directionsResult && directionsResult.routes[0]?.overview_path) {
-      const path = directionsResult.routes[0].overview_path;
-      let minDistance = Infinity;
-      for (const pt of path) {
-        const d = getDistance(userLocation, { lat: pt.lat(), lng: pt.lng() });
-        if (d < minDistance) {
-          minDistance = d;
-        }
-      }
-      if (minDistance > 35) {
-        isOffRoute = true;
-      }
-    }
-
+    // Check if target changed
     const targetChanged = (
       !lastRoutedTargetRef.current || 
       lastRoutedTargetRef.current.lat !== navigationTarget.lat || 
       lastRoutedTargetRef.current.lng !== navigationTarget.lng
     );
 
+    // Precise segment-based off-route detection (threshold reduced to 16 meters for ultra-fast recalculation)
+    let isOffRoute = false;
+    if (directionsResult && directionsResult.routes[0]?.overview_path) {
+      const path = directionsResult.routes[0].overview_path;
+      const minSegmentDistance = getMinDistanceToRoutePath(userLocation, path);
+      
+      // If user is more than 16m away from the road polyline, trigger fast recalculation
+      if (minSegmentDistance > 16) {
+        isOffRoute = true;
+      }
+    }
+
     if (!targetChanged && !isOffRoute && directionsResult) {
       return;
     }
 
+    // Avoid duplicate concurrent routing requests or flooding (cooldown: 1200ms)
+    const now = Date.now();
+    if (isRoutingInProgressRef.current && (now - lastRecalculateTimeRef.current < 4000)) {
+      return;
+    }
+    if (!targetChanged && (now - lastRecalculateTimeRef.current < 1200)) {
+      return;
+    }
+
+    lastRecalculateTimeRef.current = now;
+    isRoutingInProgressRef.current = true;
     lastRoutedTargetRef.current = { lat: navigationTarget.lat, lng: navigationTarget.lng };
+
+    if (isOffRoute) {
+      setIsRecalculating(true);
+      if (voiceEnabled && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const recalcUtterance = new SpeechSynthesisUtterance("Recalculando rota...");
+        recalcUtterance.lang = 'pt-BR';
+        recalcUtterance.rate = 1.1; // slightly faster for quick responsiveness
+        window.speechSynthesis.speak(recalcUtterance);
+      }
+    }
 
     directionsService.route({
       origin: { lat: userLocation.lat, lng: userLocation.lng },
@@ -441,11 +534,15 @@ function InnerMapController({
       setDirectionsResult(response);
       setCurrentStepIndex(0);
       lastSpokenStepRef.current = -1;
+      setIsRecalculating(false);
+      isRoutingInProgressRef.current = false;
     }).catch(e => {
       console.error("Routing error:", e);
       lastRoutedTargetRef.current = null; // allow retry
+      setIsRecalculating(false);
+      isRoutingInProgressRef.current = false;
     });
-  }, [navigationTarget, directionsService, directionsRenderer, userLocation?.lat, userLocation?.lng]);
+  }, [navigationTarget, directionsService, directionsRenderer, userLocation?.lat, userLocation?.lng, voiceEnabled]);
 
   // Handle Turn-by-Turn logic
   useEffect(() => {
@@ -462,8 +559,8 @@ function InnerMapController({
       { lat: currentStep.end_location.lat(), lng: currentStep.end_location.lng() }
     );
 
-    // If we are within 30 meters of the step's end location, move to next step
-    if (distToStepEnd < 30 && currentStepIndex < steps.length - 1) {
+    // If we are within 25 meters of the step's end location, move to next step smoothly
+    if (distToStepEnd < 25 && currentStepIndex < steps.length - 1) {
       setCurrentStepIndex(prev => prev + 1);
     }
 
@@ -476,6 +573,7 @@ function InnerMapController({
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'pt-BR';
+        utterance.rate = 1.05;
         window.speechSynthesis.speak(utterance);
       }
     }
@@ -561,6 +659,7 @@ function InnerMapController({
   useEffect(() => {
     if (!map) return;
     const handleDrag = () => {
+      setIsFollowingUser(false);
       if (onMapDragStart) {
         onMapDragStart();
       }
@@ -575,13 +674,14 @@ function InnerMapController({
     };
   }, [map, onMapDragStart]);
 
+  // Current map heading state
   const [currentMapHeading, setCurrentMapHeading] = useState(0);
 
   useEffect(() => {
     if (!map) return;
     const headingListener = map.addListener('heading_changed', () => {
       const h = map.getHeading() || 0;
-      setCurrentMapHeading(h);
+      setCurrentMapHeading(Math.round(h));
       if (onMapHeadingChange) onMapHeadingChange(h);
     });
     return () => {
@@ -615,7 +715,7 @@ function InnerMapController({
     resetToNorth();
   }, [resetNorthTrigger, map]);
 
-  // When a place is clicked in the list or map, do NOT pan the map, keep it centered on user as requested
+  // When a place is clicked/selected in the list, search or map, pan the map and zoom in closely to the establishment
   const lastSelectedPlaceIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!map || !activeSelectedPlace) return;
@@ -623,8 +723,9 @@ function InnerMapController({
     if (lastSelectedPlaceIdRef.current === placeId) return;
     lastSelectedPlaceIdRef.current = placeId;
 
-    // Disabled panning to place to keep user pin in the center
-    // safePanTo({ lat: activeSelectedPlace.lat, lng: activeSelectedPlace.lng });
+    setIsFollowingUser(false);
+    safePanTo({ lat: activeSelectedPlace.lat, lng: activeSelectedPlace.lng });
+    map.setZoom(17);
   }, [activeSelectedPlace, map]);
 
   // Handle programmatic focus (like search selection or manual locate button)
@@ -636,16 +737,8 @@ function InnerMapController({
     }
   }, [focusLocationTrigger, map]);
 
-  // Reset map tilt and heading to 2D fixed when tracking is disabled
-  useEffect(() => {
-    if (!map) return;
-    if (!isFollowingUser) {
-      map.setTilt(0);
-      map.setHeading(0);
-    }
-  }, [isFollowingUser, map]);
-
   // Dynamic map auto-centering & heading rotation following user location when isFollowingUser is active
+  const lastAppliedHeadingRef = useRef<number>(-999);
   useEffect(() => {
     if (!map || !userLocation) return;
 
@@ -657,16 +750,22 @@ function InnerMapController({
         map.setZoom(dynamicZoom);
         map.setTilt(45);
       } else {
-        safePanTo({ lat: userLocation.lat, lng: userLocation.lng }, true);
-        map.setZoom(17);
-        map.setTilt(45);
+        safePanTo({ lat: userLocation.lat, lng: userLocation.lng }, false);
       }
       
-      if (userLocation.heading !== undefined && userLocation.heading !== null) {
-        map.setHeading(userLocation.heading);
+      const effectiveHeading = mapHeading ?? userLocation.heading;
+      if (effectiveHeading !== undefined && effectiveHeading !== null && !isNaN(effectiveHeading)) {
+        if (Math.abs(effectiveHeading - lastAppliedHeadingRef.current) >= 0.5) {
+          lastAppliedHeadingRef.current = effectiveHeading;
+          if (typeof (map as any).moveCamera === 'function') {
+            (map as any).moveCamera({ heading: effectiveHeading });
+          } else if (typeof map.setHeading === 'function') {
+            map.setHeading(effectiveHeading);
+          }
+        }
       }
     }
-  }, [userLocation?.lat, userLocation?.lng, userLocation?.heading, map, navigationTarget, isFollowingUser]);
+  }, [userLocation?.lat, userLocation?.lng, userLocation?.heading, mapHeading, map, navigationTarget, isFollowingUser]);
 
   // Reverse geocode to get current street name and estimated right-side number
   useEffect(() => {
@@ -708,6 +807,12 @@ function InnerMapController({
       .catch((e) => console.log('Geocoding error:', e));
   }, [geocodingLib, userLocation?.lat, userLocation?.lng]);
 
+  // Stable user location ref to prevent continuous GPS updates from re-triggering search
+  const userLocationRef = useRef(userLocation);
+  useEffect(() => {
+    userLocationRef.current = userLocation;
+  }, [userLocation]);
+
   // Execute text search using Places API (New)
   const lastExecutedSearchRef = useRef<string>('');
   const isExecutingSearchRef = useRef<boolean>(false);
@@ -721,16 +826,17 @@ function InnerMapController({
       return;
     }
 
-    const searchKey = `${searchQuery}_${searchRadiusMeters}`;
-    if (lastExecutedSearchRef.current === searchKey && isExecutingSearchRef.current) {
+    const searchKey = `${searchQuery.trim().toLowerCase()}_${searchRadiusMeters}`;
+    if (lastExecutedSearchRef.current === searchKey) {
       return;
     }
     lastExecutedSearchRef.current = searchKey;
     isExecutingSearchRef.current = true;
 
     try {
-      const centerCoords = userLocation 
-        ? { lat: userLocation.lat, lng: userLocation.lng } 
+      const currentUserPos = userLocationRef.current;
+      const centerCoords = currentUserPos 
+        ? { lat: currentUserPos.lat, lng: currentUserPos.lng } 
         : (map.getCenter() ? { lat: map.getCenter()!.lat(), lng: map.getCenter()!.lng() } : { lat: -23.5505, lng: -46.6333 });
 
       const radius = searchRadiusMeters || 1500;
@@ -762,44 +868,46 @@ function InnerMapController({
           if (dist > radius) return false;
 
           const nameLower = (p.displayName || '').toLowerCase();
-          const addressLower = (p.formattedAddress || '').toLowerCase();
 
-          if (normalizedQuery.includes('supermercado') || normalizedQuery.includes('mercado')) {
-            if (nameLower.includes('posto') || nameLower.includes('gasolina') || nameLower.includes('bar') || nameLower.includes('boteco') || nameLower.includes('pub')) {
-              return false;
+          // Only apply negative exclusion filters if the query is a generic broad category search (not a specific business name like "Avelinos Car")
+          const isGenericCategoryQuery = ['supermercado', 'mercado', 'posto', 'gasolina', 'bar', 'boteco', 'restaurante'].includes(normalizedQuery);
+          if (isGenericCategoryQuery) {
+            if (normalizedQuery === 'supermercado' || normalizedQuery === 'mercado') {
+              if (nameLower.includes('posto') || nameLower.includes('gasolina') || nameLower.includes('bar') || nameLower.includes('boteco') || nameLower.includes('pub')) {
+                return false;
+              }
             }
-          }
-          if (normalizedQuery.includes('posto') || normalizedQuery.includes('gasolina')) {
-            if (nameLower.includes('supermercado') || nameLower.includes('mercado') || nameLower.includes('bar') || nameLower.includes('restaurante')) {
-              return false;
+            if (normalizedQuery === 'posto' || normalizedQuery === 'gasolina') {
+              if (nameLower.includes('supermercado') || nameLower.includes('mercado') || nameLower.includes('bar') || nameLower.includes('restaurante')) {
+                return false;
+              }
             }
-          }
-          if (normalizedQuery.includes('bar')) {
-            if (nameLower.includes('supermercado') || nameLower.includes('mercado') || nameLower.includes('posto') || nameLower.includes('gasolina')) {
-              return false;
+            if (normalizedQuery === 'bar') {
+              if (nameLower.includes('supermercado') || nameLower.includes('mercado') || nameLower.includes('posto') || nameLower.includes('gasolina')) {
+                return false;
+              }
             }
           }
 
           return true;
         }) : [];
 
-        // Fallback: If 0 places in strict restriction for specialized categories, query with locationBias around center
-        if (validPlaces.length === 0 && (normalizedQuery.includes('boate') || normalizedQuery.includes('balada'))) {
+        // Fallback: If 0 places in strict geographic box or searching for a specific business by name, search with locationBias around center
+        if (validPlaces.length === 0) {
           placesLib.Place.searchByText({
-            textQuery: 'balada casa noturna boate bar dançante',
-            fields: ['displayName', 'location', 'formattedAddress', 'rating', 'userRatingCount', 'internationalPhoneNumber', 'websiteURI', 'photos', 'id', 'priceLevel', 'editorialSummary', 'regularOpeningHours', 'currentOpeningHours', 'googleMapsURI'],
+            textQuery: queryText,
+            fields: ['displayName', 'location', 'formattedAddress', 'rating', 'userRatingCount', 'internationalPhoneNumber', 'websiteURI', 'photos', 'id', 'priceLevel', 'editorialSummary', 'types', 'regularOpeningHours', 'currentOpeningHours', 'googleMapsURI'],
             locationBias: {
               center: centerCoords,
-              radius: radius,
+              radius: Math.max(radius, 5000),
             },
             maxResultCount: 20,
           }).then(({ places: fallbackPlaces }) => {
-            if (!fallbackPlaces) return;
-            const fbValid = fallbackPlaces.filter((p: any) => {
-              if (!p.location) return false;
-              const dist = getDistance(centerCoords, { lat: p.location.lat(), lng: p.location.lng() });
-              return dist <= radius;
-            });
+            if (!fallbackPlaces || fallbackPlaces.length === 0) {
+              onSearchResultsUpdate([]);
+              return;
+            }
+            const fbValid = fallbackPlaces.filter((p: any) => Boolean(p.location));
             processSearchResults(fbValid);
           }).catch(console.error);
           return;
@@ -813,7 +921,7 @@ function InnerMapController({
       });
 
       function processSearchResults(validPlaces: any[]) {
-        const pins: MapPinType[] = validPlaces.map((p: any) => {
+        const pins: MapPinType[] = validPlaces.map((p: any, idx: number) => {
           let photoUrl = undefined;
           try {
             if (p.photos && p.photos.length > 0) {
@@ -833,24 +941,49 @@ function InnerMapController({
           }
 
           // Determine category based on name, types, and search query
-          let placeCategory: PlaceCategory | undefined = undefined;
+          let placeCategory: PlaceCategory = 'Outros';
           const nameLower = (p.displayName || '').toLowerCase();
-          const types = p.types || [];
+          const types: string[] = p.types || [];
 
-          if (normalizedQuery.includes('restaurante') || nameLower.includes('restaurante') || types.includes('restaurant') || types.includes('food')) {
+          if (
+            nameLower.includes('car') || 
+            nameLower.includes('auto') || 
+            nameLower.includes('oficina') || 
+            nameLower.includes('veículo') || 
+            nameLower.includes('veiculo') || 
+            nameLower.includes('mecânica') || 
+            nameLower.includes('mecanica') || 
+            nameLower.includes('estética automotiva') || 
+            nameLower.includes('estetica automotiva') || 
+            nameLower.includes('lava rápido') || 
+            nameLower.includes('lava rapido') || 
+            nameLower.includes('concessionária') || 
+            nameLower.includes('concessionaria') || 
+            types.includes('car_repair') || 
+            types.includes('car_dealer') || 
+            types.includes('car_wash')
+          ) {
+            placeCategory = 'Automotivo';
+          } else if (normalizedQuery.includes('restaurante') || nameLower.includes('restaurante') || types.includes('restaurant') || types.includes('food')) {
             placeCategory = 'Restaurante';
           } else if (normalizedQuery.includes('padaria') || nameLower.includes('padaria') || types.includes('bakery')) {
             placeCategory = 'Padaria';
+          } else if (normalizedQuery.includes('café') || normalizedQuery.includes('cafe') || normalizedQuery.includes('cafeteria') || nameLower.includes('café') || nameLower.includes('cafe') || types.includes('cafe')) {
+            placeCategory = 'Cafeteria';
           } else if (normalizedQuery.includes('supermercado') || normalizedQuery.includes('mercado') || types.includes('supermarket') || types.includes('grocery_store')) {
             placeCategory = 'Supermercado';
+          } else if (normalizedQuery.includes('farmácia') || normalizedQuery.includes('farmacia') || types.includes('pharmacy') || types.includes('drugstore')) {
+            placeCategory = 'Farmácia';
           } else if (normalizedQuery.includes('posto') || nameLower.includes('posto') || types.includes('gas_station')) {
             placeCategory = 'Posto de Gasolina';
+          } else if (normalizedQuery.includes('shopping') || types.includes('shopping_mall')) {
+            placeCategory = 'Shopping';
           } else if (normalizedQuery.includes('bar') || nameLower.includes('bar') || types.includes('bar')) {
             placeCategory = 'Bar';
           } else if (normalizedQuery.includes('boate') || normalizedQuery.includes('balada') || nameLower.includes('boate') || types.includes('night_club')) {
             placeCategory = 'Boate';
           } else {
-            placeCategory = 'Restaurante';
+            placeCategory = 'Outros';
           }
 
           const extractedHours = (p.regularOpeningHours?.weekdayDescriptions && p.regularOpeningHours.weekdayDescriptions.length > 0)
@@ -859,8 +992,10 @@ function InnerMapController({
               ? p.currentOpeningHours.weekdayDescriptions
               : getDefaultOpeningHoursForCategory(placeCategory, p.displayName);
 
+          const stableId = p.id || `place_${p.location?.lat() || idx}_${p.location?.lng() || idx}`;
+
           return {
-            id: p.id || Math.random().toString(),
+            id: stableId,
             name: p.displayName || 'Local sem nome',
             address: p.formattedAddress || '',
             lat: p.location?.lat() || 0,
@@ -881,12 +1016,18 @@ function InnerMapController({
         });
 
         onSearchResultsUpdate(pins);
+
+        // Afastar e enquadrar o zoom no mapa perfeitamente conforme o raio de pesquisa escolhido
+        setIsFollowingUser(false);
+        const targetZoom = getZoomForRadius(searchRadiusMeters || 1500);
+        safePanTo(centerCoords);
+        map.setZoom(targetZoom);
       }
     } catch (e) {
       console.error('Error in searchByText execution:', e);
       isExecutingSearchRef.current = false;
     }
-  }, [placesLib, searchQuery, searchRadiusMeters, map, userLocation?.lat, userLocation?.lng]);
+  }, [placesLib, searchQuery, searchRadiusMeters, map]);
 
   // Filter saved places by category if a specific category is selected
   const visibleSavedPlaces = selectedCategoryFilter === 'Todos' 
@@ -1040,7 +1181,26 @@ function InnerMapController({
         {/* User Current Location Marker */}
         {userLocation && (
           <AdvancedMarker position={userLocation} title="Sua Localização">
-            <div className="relative flex items-center justify-center">
+            <div className="relative flex items-center justify-center pointer-events-none">
+              {/* Dynamic Directional Field-of-View Cone (Facing beam) */}
+              {(mapHeading !== undefined || userLocation.heading !== undefined) && (
+                <div 
+                  className="absolute -top-14 w-28 h-28 pointer-events-none flex items-center justify-center transition-transform duration-75 ease-out"
+                  style={{
+                    transform: `rotate(${(mapHeading ?? userLocation.heading ?? 0) - currentMapHeading}deg)`,
+                    transformOrigin: '50% 50%',
+                  }}
+                >
+                  <div 
+                    className="w-full h-full opacity-60"
+                    style={{
+                      background: 'radial-gradient(circle at 50% 100%, rgba(16, 185, 129, 0.45) 0%, rgba(16, 185, 129, 0.15) 45%, transparent 75%)',
+                      clipPath: 'polygon(50% 50%, 15% 0%, 85% 0%)',
+                    }}
+                  />
+                </div>
+              )}
+
               <div className="absolute w-12 h-12 bg-emerald-500/40 rounded-full animate-ping" />
 
               {/* Distinctive Custom Shape: Glowing Emerald Shield / Diamond */}
@@ -1125,9 +1285,18 @@ function InnerMapController({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-                    {directionsResult?.routes[0]?.legs[0]?.steps[currentStepIndex]?.distance?.text || 'Em rota'}
-                  </span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {isRecalculating ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30 animate-pulse">
+                        <RefreshCw className="w-3 h-3 animate-spin text-amber-300" />
+                        Recalculando...
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
+                        {directionsResult?.routes[0]?.legs[0]?.steps[currentStepIndex]?.distance?.text || 'Em rota'}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1.5">
                     {!isFollowingUser && (
                       <button
@@ -1188,9 +1357,49 @@ function InnerMapController({
 
 
 
-      {/* Small, discreet floating zoom and tempo real buttons on the map */}
+      {/* Small, discreet floating zoom, compass rose and tempo real buttons on the map */}
       {!isStreetViewActive && (
-        <div className="absolute right-4 bottom-24 z-40 flex flex-col items-end gap-2 pointer-events-auto">
+        <div className="absolute right-3 bottom-6 sm:right-4 sm:bottom-8 z-20 flex flex-col items-end gap-1.5 sm:gap-2 pointer-events-auto">
+          {/* Floating Compass Rose (Bússola / Indicador Norte) */}
+          <button
+            onClick={() => {
+              if (currentMapHeading !== 0) {
+                resetToNorth();
+              } else if (mapHeading !== undefined && mapHeading !== 0) {
+                // If already at North, align directly to phone compass
+                if (map) {
+                  if (typeof (map as any).moveCamera === 'function') {
+                    (map as any).moveCamera({ heading: mapHeading });
+                  } else {
+                    map.setHeading(mapHeading);
+                  }
+                }
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 sm:py-2 rounded-xl shadow-lg border text-xs font-semibold backdrop-blur-sm bg-white/95 hover:bg-white text-slate-700 border-slate-200 active:scale-95 transition-all cursor-pointer group"
+            title={currentMapHeading !== 0 ? `Mapa inclinado a ${currentMapHeading}°. Clique para alinhar ao Norte.` : "Apontando para o Norte (0°)"}
+            aria-label="Alinhar mapa ao Norte"
+          >
+            {/* Real-time rotating needle icon */}
+            <div 
+              className="relative w-4 h-4 flex items-center justify-center transition-transform duration-100 ease-out"
+              style={{
+                transform: `rotate(${-currentMapHeading}deg)`,
+                transformOrigin: '50% 50%',
+              }}
+            >
+              <div className="w-1 h-3.5 flex flex-col items-center">
+                {/* Red North Point */}
+                <div className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[6px] border-b-rose-600" />
+                {/* Silver/Slate South Point */}
+                <div className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[6px] border-t-slate-400" />
+              </div>
+            </div>
+            <span className="font-mono text-[11px] font-bold text-slate-800">
+              {currentMapHeading === 0 ? 'Norte' : `${currentMapHeading}°`}
+            </span>
+          </button>
+
           <button
             onClick={() => {
               const nextVal = !isFollowingUser;
@@ -1199,40 +1408,45 @@ function InnerMapController({
                 if (nextVal) {
                   map.setTilt(45);
                   if (userLocation) {
-                    map.setCenter({ lat: userLocation.lat, lng: userLocation.lng });
-                    const heading = userLocation?.heading ?? mapHeading ?? 0;
-                    map.setHeading(heading);
+                    const heading = mapHeading ?? userLocation?.heading ?? 0;
+                    if (typeof (map as any).moveCamera === 'function') {
+                      (map as any).moveCamera({ center: { lat: userLocation.lat, lng: userLocation.lng }, heading, tilt: 45 });
+                    } else {
+                      map.setCenter({ lat: userLocation.lat, lng: userLocation.lng });
+                      map.setHeading(heading);
+                    }
                   }
                 } else {
                   map.setTilt(0);
-                  map.setHeading(0);
                 }
               }
             }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl shadow-lg border text-xs font-semibold backdrop-blur-sm active:scale-95 transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl shadow-lg border text-xs font-semibold backdrop-blur-sm active:scale-95 transition-all cursor-pointer ${
               isFollowingUser 
                 ? 'bg-blue-600 text-white border-blue-500 shadow-blue-500/25' 
                 : 'bg-white/95 text-slate-700 border-slate-200 hover:bg-white'
             }`}
-            title="Alternar modo Tempo Real (Mapa dinâmico 3D)"
+            title="Alternar modo Tempo Real (Rotação dinâmica e auto-centralização)"
             aria-label="Ativar modo Tempo Real"
           >
-            <Compass className={`w-4 h-4 ${isFollowingUser ? 'animate-spin text-white' : 'text-blue-600'}`} style={{ animationDuration: isFollowingUser ? '6s' : '0s' }} />
+            <Compass className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isFollowingUser ? 'animate-spin text-white' : 'text-blue-600'}`} style={{ animationDuration: isFollowingUser ? '6s' : '0s' }} />
             <span>{isFollowingUser ? 'Tempo Real: Ativo' : 'Tempo Real: Fixo'}</span>
           </button>
           
           <button
             onClick={() => {
+              if (onLocateUser) {
+                onLocateUser();
+              }
               if (map && userLocation) {
-                safePanTo({ lat: userLocation.lat, lng: userLocation.lng }, isFollowingUser);
-                map.setZoom(17);
+                safePanTo({ lat: userLocation.lat, lng: userLocation.lng }, false);
               }
             }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl shadow-lg border text-xs font-semibold backdrop-blur-sm active:scale-95 transition-all bg-white/95 text-slate-700 border-slate-200 hover:bg-white cursor-pointer"
-            title="Centralizar na minha localização"
-            aria-label="Centralizar na minha localização"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl shadow-lg border text-xs font-semibold backdrop-blur-sm active:scale-95 transition-all bg-white/95 text-slate-700 border-slate-200 hover:bg-white cursor-pointer"
+            title="Centralizar na localização atual (zoom livre)"
+            aria-label="Centralizar na localização atual"
           >
-            <LocateFixed className="w-4 h-4 text-emerald-600" />
+            <LocateFixed className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
             <span>Localizar</span>
           </button>
 
@@ -1245,7 +1459,7 @@ function InnerMapController({
                   map.setZoom(Math.min(21, currentZ + 1));
                 }
               }}
-              className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 text-slate-800 font-black text-xl border-b border-slate-200 active:bg-slate-200 transition-all cursor-pointer select-none"
+              className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center hover:bg-slate-100 text-slate-800 font-bold text-lg sm:text-xl border-b border-slate-200 active:bg-slate-200 transition-all cursor-pointer select-none"
               title="Aproximar Zoom (+)"
               aria-label="Aproximar Zoom"
             >
@@ -1258,7 +1472,7 @@ function InnerMapController({
                   map.setZoom(Math.max(3, currentZ - 1));
                 }
               }}
-              className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 text-slate-800 font-black text-xl active:bg-slate-200 transition-all cursor-pointer select-none"
+              className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center hover:bg-slate-100 text-slate-800 font-bold text-lg sm:text-xl active:bg-slate-200 transition-all cursor-pointer select-none"
               title="Afastar Zoom (-)"
               aria-label="Afastar Zoom"
             >
@@ -1277,16 +1491,25 @@ export function MapComponent(props: MapComponentProps & {
   navigationTarget?: { lat: number; lng: number } | null;
   onStopNavigation?: () => void;
 }) {
+  const [apiError, setApiError] = useState(false);
+
   if (!hasValidKey && !props.isDemoMode) {
     return <ApiKeySplash onEnableDemo={props.onEnableDemo} />;
   }
 
-  if (!hasValidKey && props.isDemoMode) {
+  if ((!hasValidKey && props.isDemoMode) || apiError) {
     return <DemoMap {...props} />;
   }
 
   return (
-    <APIProvider apiKey={API_KEY} version="weekly">
+    <APIProvider 
+      apiKey={API_KEY} 
+      version="weekly"
+      onError={(err) => {
+        console.warn('APIProvider error, falling back to DemoMap:', err);
+        setApiError(true);
+      }}
+    >
       <div className="w-full h-screen relative">
         <InnerMapController {...props} />
       </div>

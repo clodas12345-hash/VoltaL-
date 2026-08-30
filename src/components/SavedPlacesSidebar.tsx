@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, Trash2, Edit3, MapPin, Star, Navigation, Search, Bookmark, Filter, Clock } from 'lucide-react';
+import { X, Trash2, Edit3, MapPin, Star, Navigation, Search, Bookmark, Filter, Clock, Paperclip, FileText, File } from 'lucide-react';
 import { SavedPlace, PlaceCategory } from '../types';
 import { getOpeningStatus, getDefaultOpeningHoursForCategory } from '../utils/openingHours';
+import { parseAttachment, isValidAttachment } from '../utils/fileAttachment';
 
 interface SavedPlacesSidebarProps {
   isOpen: boolean;
@@ -183,23 +184,35 @@ export function SavedPlacesSidebar({
                     </div>
                   )}
 
-                  {place.customPhotos && place.customPhotos.filter(p => typeof p === 'string' && (p.startsWith('data:image/') || p.startsWith('http')) && p.length > 50).length > 0 && (
-                    <div className="flex items-center gap-1.5 pt-1">
-                      <div className="flex -space-x-2 overflow-hidden py-0.5">
-                        {place.customPhotos.filter(p => typeof p === 'string' && (p.startsWith('data:image/') || p.startsWith('http')) && p.length > 50).slice(0, 3).map((photo, i) => (
-                          <img 
-                            key={i} 
-                            src={photo} 
-                            alt={`Foto ${i + 1}`} 
-                            className="inline-block w-8 h-8 rounded-lg object-cover border-2 border-white shadow-sm"
-                          />
-                        ))}
+                  {place.customPhotos && place.customPhotos.filter(isValidAttachment).length > 0 && (() => {
+                    const validList = place.customPhotos.filter(isValidAttachment);
+                    const parsedList = validList.map((item, idx) => parseAttachment(item, idx));
+                    const imageList = parsedList.filter(a => a.category === 'image');
+                    const fileCount = parsedList.length;
+                    
+                    return (
+                      <div className="flex items-center gap-2 pt-1">
+                        {imageList.length > 0 && (
+                          <div className="flex -space-x-2 overflow-hidden py-0.5">
+                            {imageList.slice(0, 3).map((photo, i) => (
+                              <img 
+                                key={i} 
+                                src={photo.dataUrl} 
+                                alt={photo.name} 
+                                className="inline-block w-8 h-8 rounded-lg object-cover border-2 border-white shadow-sm bg-slate-100"
+                              />
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1 text-[11px] text-slate-600 font-medium">
+                          <Paperclip className="w-3 h-3 text-blue-600" />
+                          <span>
+                            {fileCount} {fileCount === 1 ? 'anexo/foto' : 'anexos/fotos'}
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-[11px] text-slate-500 font-medium ml-1">
-                        {place.customPhotos.filter(p => typeof p === 'string' && (p.startsWith('data:image/') || p.startsWith('http')) && p.length > 50).length} {place.customPhotos.filter(p => typeof p === 'string' && (p.startsWith('data:image/') || p.startsWith('http')) && p.length > 50).length === 1 ? 'foto salva' : 'fotos salvas'}
-                      </span>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
                     <div className="flex items-center gap-3">

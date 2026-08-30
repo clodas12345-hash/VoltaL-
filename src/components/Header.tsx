@@ -59,6 +59,8 @@ export function Header({
 }: HeaderProps) {
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const [isRadiusSelectorOpen, setIsRadiusSelectorOpen] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   // Debounce logic for precision searching
   useEffect(() => {
@@ -73,6 +75,13 @@ export function Header({
     setLocalSearch(searchQuery);
   }, [searchQuery]);
 
+  const handleSearchSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    inputRef.current?.blur();
+    setIsSearchFocused(false);
+    onSearchChange(localSearch);
+  };
+
   const radiusFormatted = searchRadiusMeters >= 1000 
     ? `${(searchRadiusMeters / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km` 
     : `${searchRadiusMeters} m`;
@@ -81,7 +90,7 @@ export function Header({
   // showing only the clean, non-intrusive Radar Mode Top Bar!
   if (radarConfig.isActive) {
     return (
-      <header className="absolute top-4 left-4 right-4 z-20 flex flex-col gap-2 pointer-events-none max-w-xl mx-auto">
+      <header className="absolute top-3 sm:top-4 left-3 sm:left-4 right-3 sm:right-4 z-30 flex flex-col gap-2 pointer-events-none max-w-xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -179,50 +188,69 @@ export function Header({
 
   // STANDARD MODE: Radar is OFF -> Show full Search Bar + Radius Config + Categories Row
   return (
-    <header className="absolute top-4 left-4 right-4 z-20 flex flex-col gap-2 pointer-events-none max-w-xl mx-auto">
+    <header className="absolute top-3 sm:top-4 left-3 sm:left-4 right-3 sm:right-4 z-30 flex flex-col gap-1.5 sm:gap-2 pointer-events-none max-w-xl mx-auto">
       {/* Top Search Bar Pill */}
-      <div className="bg-white/95 backdrop-blur-md rounded-full shadow-lg flex items-center p-1.5 pointer-events-auto border border-slate-200 w-full gap-2 px-3">
+      <div className={`bg-white/95 backdrop-blur-md rounded-full shadow-lg flex items-center p-1 sm:p-1.5 pointer-events-auto border transition-all duration-200 w-full gap-1.5 sm:gap-2 px-2 sm:px-3 ${
+        isSearchFocused ? 'border-blue-500 ring-2 ring-blue-400/30' : 'border-slate-200'
+      }`}>
         <button 
           onClick={onOpenSettings} 
           className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-full shrink-0 transition-colors cursor-pointer"
           title="Configurações e Ajuda"
         >
-          <Settings className="w-5 h-5" />
+          <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
         
         <GKDLogo />
 
-        <div className="w-px h-6 bg-slate-200 mx-0.5 shrink-0" />
+        <div className="w-px h-5 sm:h-6 bg-slate-200 mx-0.5 shrink-0" />
         
-        {/* Search Input */}
-        <div className="flex-1 flex items-center px-1 min-w-0">
+        {/* Search Input wrapped in Form for Virtual Keyboard 'Ir' / Enter Submission */}
+        <form 
+          action=""
+          onSubmit={handleSearchSubmit}
+          className="flex-1 flex items-center px-1 min-w-0"
+        >
           <input
+            ref={inputRef}
+            type="search"
+            enterKeyHint="search"
             className="w-full bg-transparent border-none outline-none text-slate-800 text-sm sm:text-base py-1.5 placeholder:text-slate-400 truncate"
-            placeholder={`Buscar no raio de ${radiusFormatted}...`}
+            placeholder={isSearchFocused ? "Digite o nome (ex: Avelinos Car)..." : `Buscar (${radiusFormatted})...`}
             value={localSearch}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => {
+              setTimeout(() => setIsSearchFocused(false), 200);
+            }}
             onChange={(e) => setLocalSearch(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                onSearchChange(localSearch);
+                e.preventDefault();
+                handleSearchSubmit(e);
               }
             }}
           />
           {localSearch && (
             <button 
-              onClick={() => { setLocalSearch(''); onSearchChange(''); }} 
-              className="p-1.5 text-slate-400 hover:text-slate-600 shrink-0 cursor-pointer"
+              type="button"
+              onClick={() => { 
+                setLocalSearch(''); 
+                onSearchChange(''); 
+                inputRef.current?.focus();
+              }} 
+              className="p-1 text-slate-400 hover:text-slate-600 shrink-0 cursor-pointer"
               title="Limpar busca"
             >
               <X className="w-4 h-4" />
             </button>
           )}
-        </div>
+        </form>
 
         {/* Quick Radius Selector Trigger Button */}
         <button
           type="button"
           onClick={() => setIsRadiusSelectorOpen(!isRadiusSelectorOpen)}
-          className={`px-2 py-1 rounded-full text-xs font-bold shrink-0 transition-all flex items-center gap-1 cursor-pointer border ${
+          className={`px-2 py-1 rounded-full text-[11px] sm:text-xs font-bold shrink-0 transition-all flex items-center gap-1 cursor-pointer border ${
             isRadiusSelectorOpen
               ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
               : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
@@ -233,13 +261,14 @@ export function Header({
           <ChevronDown className={`w-3 h-3 transition-transform ${isRadiusSelectorOpen ? 'rotate-180' : ''}`} />
         </button>
 
-        {/* Search execute button */}
+        {/* Search execute button (Ir / Buscar) */}
         <button 
-          onClick={() => onSearchChange(localSearch)} 
-          className="bg-blue-600 text-white p-2 sm:p-2.5 rounded-full shrink-0 shadow-md hover:bg-blue-700 transition-colors cursor-pointer"
-          title="Pesquisar"
+          type="button"
+          onClick={() => handleSearchSubmit()} 
+          className="bg-blue-600 text-white p-2 sm:p-2.5 rounded-full shrink-0 shadow-md hover:bg-blue-700 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
+          title="Pesquisar (ou pressione 'Ir' no teclado)"
         >
-          <Search className="w-4 h-4 sm:w-5 sm:h-5" />
+          <Search className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
         </button>
       </div>
 
@@ -293,81 +322,95 @@ export function Header({
         )}
       </AnimatePresence>
 
-      {/* Categories Horizontal Scroll Row */}
-      <div className="w-full overflow-x-auto no-scrollbar pointer-events-auto">
-        <div className="flex items-center gap-2 pb-1 px-1">
+      {/* Categories Horizontal Scroll Row - automatically collapses when typing to avoid overlapping */}
+      {!isSearchFocused && (
+        <motion.div 
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          className="w-full overflow-x-auto no-scrollbar pointer-events-auto"
+        >
+          <div className="flex items-center gap-1.5 sm:gap-2 pb-0.5 px-0.5">
+            <button
+              onClick={() => {
+                if (onFilterClick) onFilterClick(null);
+                setLocalSearch('');
+              }}
+              className={`shrink-0 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium shadow-md transition-colors border cursor-pointer ${
+                searchQuery === ''
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-slate-700 border-slate-100 hover:bg-slate-50'
+              }`}
+            >
+              Todos
+            </button>
+            {categories.map((cat) => {
+              const isActive = searchQuery === cat;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    if (onFilterClick) onFilterClick(cat);
+                    setLocalSearch(searchQuery === cat ? '' : cat);
+                  }}
+                  className={`shrink-0 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium shadow-md transition-colors border cursor-pointer ${
+                    isActive
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-slate-700 border-slate-100 hover:bg-slate-50'
+                  }`}
+                >
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Action Buttons Row - automatically collapses when typing to prevent overlapping */}
+      {!isSearchFocused && (
+        <motion.div 
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto justify-end mt-0"
+        >
+          {/* Radar Button with active pulse */}
           <button
-            onClick={() => {
-              if (onFilterClick) onFilterClick(null);
-              setLocalSearch('');
-            }}
-            className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium shadow-md transition-colors border cursor-pointer ${
-              searchQuery === ''
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-slate-700 border-slate-100 hover:bg-slate-50'
-            }`}
+            onClick={onOpenRadar}
+            className="shadow-md px-3 sm:px-4 py-1.5 sm:py-2 rounded-full font-bold text-xs border transition-all flex items-center gap-1.5 cursor-pointer bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-slate-100"
+            title="Ligar Radar Proativo"
           >
-            Todos
+            <Radio className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
+            <span>Radar</span>
           </button>
-          {categories.map((cat) => {
-            const isActive = searchQuery === cat;
-            return (
-              <button
-                key={cat}
-                onClick={() => {
-                  if (onFilterClick) onFilterClick(cat);
-                  setLocalSearch(searchQuery === cat ? '' : cat);
-                }}
-                className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium shadow-md transition-colors border cursor-pointer ${
-                  isActive
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-slate-700 border-slate-100 hover:bg-slate-50'
-                }`}
-              >
-                {cat}
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* Action Buttons Row */}
-      <div className="flex items-center gap-2 pointer-events-auto justify-end mt-0">
-        {/* Radar Button with active pulse */}
-        <button
-          onClick={onOpenRadar}
-          className="shadow-md px-4 py-2 rounded-full font-bold text-xs border transition-all flex items-center gap-1.5 cursor-pointer bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-slate-100"
-          title="Ligar Radar Proativo"
-        >
-          <Radio className="w-4 h-4 text-emerald-600" />
-          <span>Radar</span>
-        </button>
-
-        {searchQuery !== '' && (
+          {searchQuery !== '' && (
+            <button 
+              onClick={onOpenProximityList} 
+              className="bg-white shadow-md px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-slate-700 font-semibold text-xs border border-slate-100 hover:bg-slate-50 transition-colors flex items-center gap-1.5 animate-fadeIn cursor-pointer"
+              title="Lista de Locais"
+            >
+              <Compass className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 animate-spin-slow" />
+              <span>Lista</span>
+            </button>
+          )}
           <button 
-            onClick={onOpenProximityList} 
-            className="bg-white shadow-md px-3.5 py-2.5 rounded-full text-slate-700 font-semibold text-xs border border-slate-100 hover:bg-slate-50 transition-colors flex items-center gap-1.5 animate-fadeIn cursor-pointer"
-            title="Lista de Locais"
+            onClick={onOpenAddCustomPin} 
+            className="bg-white shadow-md p-2 sm:p-2.5 rounded-full text-emerald-600 border border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
+            title="Adicionar Local"
           >
-            <Compass className="w-4 h-4 text-emerald-600 animate-spin-slow" />
-            <span>Lista</span>
+            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
-        )}
-        <button 
-          onClick={onOpenAddCustomPin} 
-          className="bg-white shadow-md p-3 rounded-full text-emerald-600 border border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
-          title="Adicionar Local"
-        >
-          <Plus className="w-5 h-5" />
-        </button>
-        <button 
-          onClick={onOpenSaved} 
-          className="bg-white shadow-md p-3 rounded-full text-blue-600 border border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
-          title="Locais Salvos"
-        >
-          <Star className="w-5 h-5 fill-blue-600 text-blue-600" />
-        </button>
-      </div>
+          <button 
+            onClick={onOpenSaved} 
+            className="bg-white shadow-md p-2 sm:p-2.5 rounded-full text-blue-600 border border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
+            title="Locais Salvos"
+          >
+            <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-blue-600 text-blue-600" />
+          </button>
+        </motion.div>
+      )}
     </header>
   );
 }

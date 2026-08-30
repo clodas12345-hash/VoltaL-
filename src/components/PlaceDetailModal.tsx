@@ -1,9 +1,21 @@
 import { StreetView } from "./StreetView";
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Star, MapPin, Phone, Globe, Bookmark, Check, Sparkles, Navigation, Clock, DollarSign, Users, MessageCircle, ChevronDown, ChevronUp, AlertCircle, Camera, Trash2, ImagePlus, Plus } from 'lucide-react';
+import { 
+  X, Star, MapPin, Phone, Globe, Bookmark, Check, Sparkles, Navigation, 
+  Clock, DollarSign, Users, MessageCircle, ChevronDown, ChevronUp, 
+  AlertCircle, Camera, Trash2, ImagePlus, Plus, FileText, File, 
+  Download, Eye, Paperclip, Copy, ExternalLink, FileSpreadsheet, FileArchive, FileCode, CheckCheck 
+} from 'lucide-react';
 import { PlaceCategory, SavedPlace } from '../types';
-import heic2any from 'heic2any';
 import { getOpeningStatus, getWeekdaySchedules, getDefaultOpeningHoursForCategory } from '../utils/openingHours';
+import { 
+  FileAttachment, 
+  isValidAttachment, 
+  parseAttachment, 
+  processUploadedFile, 
+  downloadAttachment,
+  getAttachmentCategory 
+} from '../utils/fileAttachment';
 
 interface PlaceDetailModalProps {
   place: {
@@ -39,10 +51,6 @@ const API_KEY =
   (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
   (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
   '';
-
-const isValidPhoto = (photo: string): boolean => {
-  return typeof photo === 'string' && (photo.startsWith('data:image/') || photo.startsWith('blob:') || photo.startsWith('http://') || photo.startsWith('https://')) && photo.length > 30;
-};
 
 export function PlaceDetailModal({
   place,
@@ -86,16 +94,16 @@ export function PlaceDetailModal({
       if (draft) {
         const photos = JSON.parse(draft).customPhotos;
         if (Array.isArray(photos)) {
-          return photos.filter(isValidPhoto);
+          return photos.filter(isValidAttachment);
         }
       }
     } catch (e) {}
-    return (existingSaved?.customPhotos || []).filter(isValidPhoto);
+    return (existingSaved?.customPhotos || []).filter(isValidAttachment);
   });
 
   useEffect(() => {
     try {
-      const validOnly = customPhotos.filter(isValidPhoto);
+      const validOnly = customPhotos.filter(isValidAttachment);
       const draft = { name, category, notes, customPhotos: validOnly };
       sessionStorage.setItem(`draft_${place.placeId || place.lat}`, JSON.stringify(draft));
     } catch (e) {
@@ -113,6 +121,9 @@ export function PlaceDetailModal({
   const [processingCount, setProcessingCount] = useState(0);
   const [showHours, setShowHours] = useState(false);
   const [viewingPhotoIndex, setViewingPhotoIndex] = useState<number | null>(null);
+  const [viewingTextAttachment, setViewingTextAttachment] = useState<FileAttachment | null>(null);
+  const [viewingDocAttachment, setViewingDocAttachment] = useState<FileAttachment | null>(null);
+  const [copySuccess, setCopySuccess] = useState(false);
   const [showMainPhotoOptions, setShowMainPhotoOptions] = useState(false);
   const [viewingMainPhotoFullscreen, setViewingMainPhotoFullscreen] = useState(false);
   const [viewingStreetView, setViewingStreetView] = useState(false);
@@ -126,168 +137,10 @@ export function PlaceDetailModal({
   const todayDescription = openingStatus.todaySchedule;
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const compressImage = async (file: File): Promise<string> => {
-    let workingFile: Blob = file;
-
-    // Check for HEIC / HEIF from iPhones / Samsung Galaxy
-    const fileName = file.name ? file.name.toLowerCase() : '';
-    const isHeic = fileName.endsWith('.heic') || fileName.endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
-
-    if (isHeic) {
-      try {
-        const converted = await heic2any({
-          blob: file,
-          toType: 'image/jpeg',
-          quality: 0.7,
-        });
-        workingFile = Array.isArray(converted) ? converted[0] : converted;
-      } catch (e) {
-        console.warn('HEIC conversion fallback:', e);
-      }
-    }
-
-    // Method 1: Hardware-accelerated createImageBitmap with native downscale
-    if (typeof window !== 'undefined' && 'createImageBitmap' in window) {
-      try {
-        let bitmap: ImageBitmap | null = null;
-        try {
-          bitmap = await createImageBitmap(workingFile, {
-            resizeWidth: 800,
-            resizeQuality: 'medium',
-          } as any);
-        } catch {
-          bitmap = await createImageBitmap(workingFile);
-        }
-
-        if (bitmap) {
-          const MAX_DIM = 800;
-          let width = bitmap.width;
-          let height = bitmap.height;
-
-          if (width > height) {
-            if (width > MAX_DIM) {
-              height = Math.round((height * MAX_DIM) / width);
-              width = MAX_DIM;
-            }
-          } else {
-            if (height > MAX_DIM) {
-              width = Math.round((width * MAX_DIM) / height);
-              height = MAX_DIM;
-            }
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.max(1, width);
-          canvas.height = Math.max(1, height);
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(bitmap, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-            bitmap.close();
-            if (dataUrl && dataUrl.length > 50) {
-              return dataUrl;
-            }
-          }
-          bitmap.close();
-        }
-      } catch (err) {
-        console.warn('createImageBitmap failed, trying Blob URL / FileReader:', err);
-      }
-    }
-
-    // Method 2: Blob URL + Image() fallback
-    return new Promise((resolve) => {
-      let resolved = false;
-      const finish = (result: string) => {
-        if (!resolved) {
-          resolved = true;
-          resolve(result);
-        }
-      };
-
-      const timeout = setTimeout(() => {
-        finish('');
-      }, 10000);
-
-      try {
-        const blobUrl = URL.createObjectURL(workingFile);
-        const img = new Image();
-
-        img.onload = () => {
-          clearTimeout(timeout);
-          try {
-            const canvas = document.createElement('canvas');
-            const MAX_DIM = 800;
-            let width = img.naturalWidth || img.width || 800;
-            let height = img.naturalHeight || img.height || 600;
-
-            if (width > height) {
-              if (width > MAX_DIM) {
-                height = Math.round((height * MAX_DIM) / width);
-                width = MAX_DIM;
-              }
-            } else {
-              if (height > MAX_DIM) {
-                width = Math.round((width * MAX_DIM) / height);
-                height = MAX_DIM;
-              }
-            }
-
-            canvas.width = Math.max(1, width);
-            canvas.height = Math.max(1, height);
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(img, 0, 0, width, height);
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-              URL.revokeObjectURL(blobUrl);
-              if (dataUrl && dataUrl.length > 50) {
-                finish(dataUrl);
-                return;
-              }
-            }
-          } catch (err) {
-            console.warn('Canvas compression error, using fallback:', err);
-          }
-          URL.revokeObjectURL(blobUrl);
-          readWithFileReader(workingFile, finish);
-        };
-
-        img.onerror = () => {
-          URL.revokeObjectURL(blobUrl);
-          readWithFileReader(workingFile, finish);
-        };
-
-        img.src = blobUrl;
-      } catch (err) {
-        readWithFileReader(workingFile, finish);
-      }
-    });
-  };
-
-  const readWithFileReader = (file: Blob, callback: (res: string) => void) => {
-    try {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        let result = (e.target?.result as string) || '';
-        if (result.startsWith('data:')) {
-          if (!result.startsWith('data:image/')) {
-            result = result.replace(/^data:[^;]+;base64,/, 'data:image/jpeg;base64,');
-          }
-          callback(result);
-        } else {
-          callback('');
-        }
-      };
-      reader.onerror = () => callback('');
-      reader.readAsDataURL(file);
-    } catch {
-      callback('');
-    }
-  };
-
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
@@ -296,32 +149,43 @@ export function PlaceDetailModal({
     setProcessingCount(fileList.length);
     
     try {
-      // Process all selected photos in parallel for high speed
-      const compressedResults = await Promise.all(
-        fileList.map((file) => compressImage(file))
+      // Process all selected files (photos, PDF, TXT, DOC, etc.) in parallel
+      const results = await Promise.all(
+        fileList.map((file) => processUploadedFile(file))
       );
 
-      const validPhotos = compressedResults.filter((img): img is string => !!img && isValidPhoto(img));
+      const validFiles = results.filter((item): item is string => !!item && isValidAttachment(item));
       
-      if (validPhotos.length > 0) {
-        setCustomPhotos((prev) => [...prev.filter(isValidPhoto), ...validPhotos]);
+      if (validFiles.length > 0) {
+        setCustomPhotos((prev) => [...prev.filter(isValidAttachment), ...validFiles]);
       }
     } catch (err) {
-      console.error('Error uploading photos in batch:', err);
+      console.error('Error uploading files in batch:', err);
     } finally {
       setIsProcessingPhoto(false);
       setProcessingCount(0);
       try {
         if (fileInputRef.current) fileInputRef.current.value = '';
+        if (photoInputRef.current) photoInputRef.current.value = '';
         if (cameraInputRef.current) cameraInputRef.current.value = '';
       } catch (e) {}
     }
   };
 
-  const removePhoto = (index: number) => {
+  const removeAttachment = (index: number) => {
     setCustomPhotos(prev => prev.filter((_, i) => i !== index));
     if (viewingPhotoIndex === index) {
       setViewingPhotoIndex(null);
+    }
+  };
+
+  const handleCopyText = (text: string) => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2500);
+    } catch (e) {
+      console.error('Failed to copy text', e);
     }
   };
 
@@ -544,7 +408,7 @@ export function PlaceDetailModal({
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Nome do Estabelecimento (Editável)
+                Nome do Estabelecimento
               </label>
               <input
                 type="text"
@@ -565,7 +429,7 @@ export function PlaceDetailModal({
                 {(() => {
                   const match = place.address.match(/n[º°]\s*(\d+)/i) || place.address.match(/,\s*(\d+)/);
                   if (match) return `Nº ${match[1]}`;
-                  return `Nº ${Math.floor(Math.abs((place.lat + place.lng) * 100000) % 950) + 50} (Aprox.)`;
+                  return `Nº ${Math.floor(Math.abs((place.lat + place.lng) * 100000) % 950) + 50}`;
                 })()}
               </div>
             </div>
@@ -889,7 +753,7 @@ export function PlaceDetailModal({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Anotações Pessoais (Opcional)
+                Anotações Pessoais
               </label>
               <textarea
                 value={notes}
@@ -903,47 +767,69 @@ export function PlaceDetailModal({
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <span>Fotos Salvas</span>
+                  <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Fotos e Arquivos</span>
                   {customPhotos.length > 0 && (
                     <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
-                      {customPhotos.length}
+                      {customPhotos.length} {customPhotos.length === 1 ? 'item' : 'itens'}
                     </span>
                   )}
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
                     onClick={() => cameraInputRef.current?.click()}
                     disabled={isProcessingPhoto}
-                    className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium hover:bg-emerald-100 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 transition-colors shadow-sm active:scale-95"
+                    className="flex items-center gap-1 text-xs text-emerald-700 font-medium hover:bg-emerald-100 bg-emerald-50 px-2 py-1.5 rounded-lg border border-emerald-200 transition-colors shadow-sm active:scale-95"
+                    title="Tirar foto com a câmera"
                   >
                     <Camera className="w-3.5 h-3.5" />
-                    <span>Tirar Foto</span>
+                    <span>Câmera</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    disabled={isProcessingPhoto}
+                    className="flex items-center gap-1 text-xs text-blue-700 font-medium hover:bg-blue-100 bg-blue-50 px-2 py-1.5 rounded-lg border border-blue-200 transition-colors shadow-sm active:scale-95"
+                    title="Fotos e imagens da galeria"
+                  >
+                    <ImagePlus className="w-3.5 h-3.5" />
+                    <span>Fotos</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isProcessingPhoto}
-                    className="flex items-center gap-1.5 text-xs text-blue-700 font-medium hover:bg-blue-100 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 transition-colors shadow-sm active:scale-95"
+                    className="flex items-center gap-1 text-xs text-indigo-700 font-medium hover:bg-indigo-100 bg-indigo-50 px-2 py-1.5 rounded-lg border border-indigo-200 transition-colors shadow-sm active:scale-95"
+                    title="PDF, TXT, Documentos, Planilhas e outros"
                   >
-                    <ImagePlus className="w-3.5 h-3.5" />
-                    <span>Galeria</span>
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>PDF / TXT / Docs</span>
                   </button>
                 </div>
               </div>
               
+              {/* Hidden file inputs for versatile uploads */}
               <input 
                 type="file" 
                 ref={fileInputRef} 
-                onChange={handlePhotoUpload} 
-                accept="image/*" 
+                onChange={handleFileUpload} 
+                accept="*/*" 
+                multiple
+                className="hidden" 
+              />
+              <input 
+                type="file" 
+                ref={photoInputRef} 
+                onChange={handleFileUpload} 
+                accept="image/*,.heic,.heif" 
                 multiple
                 className="hidden" 
               />
               <input 
                 type="file" 
                 ref={cameraInputRef} 
-                onChange={handlePhotoUpload} 
+                onChange={handleFileUpload} 
                 accept="image/*" 
                 capture="environment"
                 className="hidden" 
@@ -954,57 +840,179 @@ export function PlaceDetailModal({
                   <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                   <span>
                     {processingCount > 1
-                      ? `Processando e otimizando ${processingCount} fotos ao mesmo tempo...`
-                      : 'Processando e otimizando imagem...'}
+                      ? `Processando ${processingCount} arquivos ao mesmo tempo...`
+                      : 'Processando e salvando anexo...'}
                   </span>
                 </div>
               )}
               
               {customPhotos.length > 0 ? (
-                <div className="grid grid-cols-4 gap-2">
-                  {customPhotos.map((photo, idx) => (
-                    <div 
-                      key={idx} 
-                      className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group bg-slate-100 shadow-sm"
-                    >
-                      <img 
-                        src={photo} 
-                        alt={`Foto ${idx + 1}`} 
-                        onClick={() => setViewingPhotoIndex(idx)}
-                        className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-200" 
-                      />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removePhoto(idx);
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                  {customPhotos.map((rawItem, idx) => {
+                    const att = parseAttachment(rawItem);
+                    
+                    if (att.category === 'image') {
+                      return (
+                        <div 
+                          key={idx} 
+                          className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group bg-slate-100 shadow-sm"
+                        >
+                          <img 
+                            src={att.dataUrl} 
+                            alt={att.name || `Foto ${idx + 1}`} 
+                            onClick={() => setViewingPhotoIndex(idx)}
+                            className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-200" 
+                          />
+                          <div className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-xs text-white text-[9px] font-bold px-1.5 py-0.5 rounded pointer-events-none">
+                            FOTO
+                          </div>
+                          <div className="absolute top-1 right-1 flex items-center gap-1 opacity-90 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadAttachment(att);
+                              }}
+                              className="p-1 bg-black/60 hover:bg-blue-600 text-white rounded-full transition-colors shadow"
+                              title="Baixar imagem"
+                            >
+                              <Download className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeAttachment(idx);
+                              }}
+                              className="p-1 bg-black/60 hover:bg-red-600 text-white rounded-full transition-colors shadow"
+                              title="Remover anexo"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // For non-image files (PDF, TXT, DOC, XLS, ZIP, etc.)
+                    const isPdf = att.category === 'pdf';
+                    const isText = att.category === 'text';
+                    const isSpreadsheet = att.category === 'spreadsheet';
+                    const isDoc = att.category === 'document';
+                    const isArchive = att.category === 'archive';
+
+                    const cardBg = isPdf 
+                      ? 'bg-rose-50 border-rose-200 text-rose-800 hover:border-rose-400' 
+                      : isText 
+                      ? 'bg-amber-50 border-amber-200 text-amber-800 hover:border-amber-400'
+                      : isSpreadsheet
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:border-emerald-400'
+                      : isDoc
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-800 hover:border-indigo-400'
+                      : isArchive
+                      ? 'bg-purple-50 border-purple-200 text-purple-800 hover:border-purple-400'
+                      : 'bg-slate-50 border-slate-200 text-slate-800 hover:border-slate-400';
+
+                    const iconColor = isPdf
+                      ? 'bg-rose-100 text-rose-600'
+                      : isText
+                      ? 'bg-amber-100 text-amber-600'
+                      : isSpreadsheet
+                      ? 'bg-emerald-100 text-emerald-600'
+                      : isDoc
+                      ? 'bg-indigo-100 text-indigo-600'
+                      : isArchive
+                      ? 'bg-purple-100 text-purple-600'
+                      : 'bg-slate-200 text-slate-700';
+
+                    const badgeLabel = isPdf ? 'PDF' : isText ? 'TXT' : isSpreadsheet ? 'XLS/CSV' : isDoc ? 'DOC' : isArchive ? 'ZIP' : 'ARQUIVO';
+
+                    return (
+                      <div 
+                        key={idx} 
+                        onClick={() => {
+                          if (isText) {
+                            setViewingTextAttachment(att);
+                          } else {
+                            setViewingDocAttachment(att);
+                          }
                         }}
-                        className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-600 text-white rounded-full transition-colors shadow"
-                        title="Remover foto"
+                        className={`relative aspect-square rounded-xl border p-2 flex flex-col justify-between cursor-pointer transition-all shadow-sm group ${cardBg}`}
                       >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex items-start justify-between w-full">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${iconColor}`}>
+                            {isPdf ? <FileText className="w-4 h-4" /> : isText ? <FileCode className="w-4 h-4" /> : isSpreadsheet ? <FileSpreadsheet className="w-4 h-4" /> : isArchive ? <FileArchive className="w-4 h-4" /> : <File className="w-4 h-4" />}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadAttachment(att);
+                              }}
+                              className="p-1 bg-black/10 hover:bg-black/20 rounded-full transition-colors"
+                              title="Baixar arquivo"
+                            >
+                              <Download className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeAttachment(idx);
+                              }}
+                              className="p-1 bg-black/10 hover:bg-red-500 hover:text-white rounded-full transition-colors"
+                              title="Remover anexo"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="w-full">
+                          <span className="text-[9px] font-bold uppercase tracking-wider block opacity-75">
+                            {badgeLabel}
+                          </span>
+                          <p className="text-[11px] font-semibold truncate leading-tight mt-0.5" title={att.name}>
+                            {att.name || 'Arquivo anexado'}
+                          </p>
+                          <span className="text-[9px] opacity-60 block mt-0.5 font-mono">
+                            {att.sizeFormatted || 'Arquivo'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Add more button */}
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="aspect-square rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center gap-1 text-slate-400 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50/50 transition-colors"
+                    title="Adicionar mais arquivos ou fotos"
                   >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-[10px] font-medium">+ Mais</span>
+                    <Plus className="w-5 h-5" />
+                    <span className="text-[10px] font-semibold">+ Anexar</span>
                   </button>
                 </div>
               ) : (
                 <div 
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full py-5 border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-2xl flex flex-col items-center justify-center text-slate-500 gap-1.5 cursor-pointer hover:bg-slate-50 transition-all group"
+                  className="w-full py-5 px-4 border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-2xl flex flex-col items-center justify-center text-slate-500 gap-2 cursor-pointer hover:bg-slate-50 transition-all group"
                 >
-                  <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors">
-                    <ImagePlus className="w-5 h-5" />
+                  <div className="w-11 h-11 rounded-full bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors">
+                    <Paperclip className="w-5 h-5" />
                   </div>
-                  <span className="text-xs font-semibold text-slate-700">Adicionar fotos do local</span>
-                  <span className="text-[11px] text-slate-400">Cardápios, fachadas, preços ou recibos</span>
+                  <div className="text-center">
+                    <span className="text-xs font-semibold text-slate-700 block">Adicionar fotos ou arquivos</span>
+                    <span className="text-[11px] text-slate-400 block mt-0.5">Suporta fotos (JPG, PNG, HEIC), PDF, TXT, DOC, planilhas e mais</span>
+                  </div>
+                  <div className="flex gap-2 mt-1">
+                    <span className="text-[10px] font-medium bg-slate-100 group-hover:bg-blue-50 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200">📷 Fotos</span>
+                    <span className="text-[10px] font-medium bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md border border-rose-200">📄 PDF</span>
+                    <span className="text-[10px] font-medium bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md border border-amber-200">📝 TXT</span>
+                    <span className="text-[10px] font-medium bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-200">📁 Qualquer arquivo</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -1036,33 +1044,187 @@ export function PlaceDetailModal({
       </div>
     </div>
 
-      {/* Photo Viewer Modal */}
-      {viewingPhotoIndex !== null && (
+      {/* Photo Fullscreen Viewer Modal */}
+      {viewingPhotoIndex !== null && customPhotos[viewingPhotoIndex] && (
         <div className="fixed inset-0 z-[160] bg-black/95 flex flex-col animate-fadeIn">
-          <div className="flex justify-between items-center p-4">
-            <button
-              onClick={(e) => { e.stopPropagation(); setViewingPhotoIndex(null); }}
-              className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); removePhoto(viewingPhotoIndex); }}
-              className="p-3 bg-red-500/20 hover:bg-red-500/40 rounded-full text-red-500 transition-colors flex items-center gap-2 text-sm font-medium pr-4"
-            >
-              <Trash2 className="w-5 h-5" />
-              Excluir
-            </button>
-          </div>
-          <div className="flex-1 overflow-hidden flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
-            <img 
-              src={customPhotos[viewingPhotoIndex]} 
-              alt={`Foto ${viewingPhotoIndex + 1}`} 
-              className="max-w-full max-h-full object-contain"
-            />
+          {(() => {
+            const att = parseAttachment(customPhotos[viewingPhotoIndex]);
+            return (
+              <>
+                <div className="flex justify-between items-center p-4 bg-black/40 backdrop-blur-xs">
+                  <div className="flex items-center gap-2 text-white text-sm font-medium truncate max-w-[60%]">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setViewingPhotoIndex(null); }}
+                      className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors mr-1"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                    <span className="truncate">{att.name || `Foto ${viewingPhotoIndex + 1}`}</span>
+                    {att.sizeFormatted && (
+                      <span className="text-xs text-slate-400 font-mono">({att.sizeFormatted})</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        downloadAttachment(att);
+                      }}
+                      className="p-2.5 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors flex items-center gap-1.5 text-xs font-medium px-3"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Baixar</span>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeAttachment(viewingPhotoIndex); }}
+                      className="p-2.5 bg-red-500/20 hover:bg-red-500/40 rounded-full text-red-400 transition-colors flex items-center gap-1.5 text-xs font-medium px-3"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Excluir</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-hidden flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
+                  <img 
+                    src={att.dataUrl} 
+                    alt={att.name || `Foto ${viewingPhotoIndex + 1}`} 
+                    className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                  />
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Text File Reader Modal */}
+      {viewingTextAttachment && (
+        <div className="fixed inset-0 z-[165] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn" onClick={() => setViewingTextAttachment(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-slate-900 text-sm truncate">{viewingTextAttachment.name}</h3>
+                  <p className="text-xs text-slate-500 font-mono">{viewingTextAttachment.sizeFormatted || 'Arquivo de texto'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleCopyText(viewingTextAttachment.rawText || '')}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1 transition-colors"
+                  title="Copiar todo o texto"
+                >
+                  {copySuccess ? <CheckCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copySuccess ? 'Copiado!' : 'Copiar'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadAttachment(viewingTextAttachment)}
+                  className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors"
+                  title="Baixar arquivo"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewingTextAttachment(null)}
+                  className="p-1.5 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-4 flex-1 overflow-y-auto bg-slate-950 text-slate-100 font-mono text-xs leading-relaxed select-text whitespace-pre-wrap rounded-b-3xl">
+              {viewingTextAttachment.rawText || 'Nenhum conteúdo de texto encontrado.'}
+            </div>
           </div>
         </div>
       )}
+
+      {/* PDF / Document Viewer Modal */}
+      {viewingDocAttachment && (
+        <div className="fixed inset-0 z-[165] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn" onClick={() => setViewingDocAttachment(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  viewingDocAttachment.category === 'pdf' ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'
+                }`}>
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-slate-900 text-sm truncate">{viewingDocAttachment.name}</h3>
+                  <p className="text-xs text-slate-500 font-mono">{viewingDocAttachment.sizeFormatted || 'Documento'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => downloadAttachment(viewingDocAttachment)}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar Arquivo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewingDocAttachment(null)}
+                  className="p-1.5 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 flex-1 flex flex-col items-center justify-center bg-slate-50 overflow-y-auto min-h-[300px]">
+              {viewingDocAttachment.category === 'pdf' && viewingDocAttachment.dataUrl ? (
+                <div className="w-full h-full flex flex-col items-center gap-4">
+                  <iframe 
+                    src={viewingDocAttachment.dataUrl} 
+                    title={viewingDocAttachment.name}
+                    className="w-full h-[55vh] rounded-xl border border-slate-200 shadow-inner bg-white"
+                  />
+                  <div className="flex gap-3">
+                    <a 
+                      href={viewingDocAttachment.dataUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-medium"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Abrir PDF em tela cheia / nova aba
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center p-6 max-w-sm">
+                  <div className="w-16 h-16 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-3">
+                    <File className="w-8 h-8" />
+                  </div>
+                  <h4 className="font-bold text-slate-800 mb-1">{viewingDocAttachment.name}</h4>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Este tipo de arquivo pode ser baixado diretamente para visualização em seu computador ou celular.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => downloadAttachment(viewingDocAttachment)}
+                    className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 shadow transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Baixar ({viewingDocAttachment.sizeFormatted || 'Arquivo'})</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Photo Options Modal */}
       {showMainPhotoOptions && (
         <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn" onClick={() => setShowMainPhotoOptions(false)}>

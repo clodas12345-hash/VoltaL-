@@ -7,9 +7,9 @@
   "theme_color": "#0f172a",
   "icons": [
     {
-      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M15 45L45 35L75 45L85 40V75L75 80L45 70L15 80V45Z' fill='%230B1B3D'/><path d='M45 35V70' stroke='%2338BDF8' stroke-width='3' stroke-linecap='round'/><path d='M15 45L45 55L75 45' stroke='%23FFFFFF' stroke-width='2.5' opacity='0.8' stroke-linecap='round'/><path d='M30 40L55 75' stroke='%23FFFFFF' stroke-width='2' opacity='0.6' stroke-linecap='round'/><path d='M60 42L40 73' stroke='%23FFFFFF' stroke-width='2' opacity='0.6' stroke-linecap='round'/><path d='M50 8C38.9543 8 30 16.9543 30 28C30 42 50 62 50 62C50 62 70 42 70 28C70 16.9543 61.0457 8 50 8Z' fill='%23F97316'/><circle cx='50' cy='27' r='9' fill='white'/></svg>",
+      "src": "/icon.png",
       "sizes": "512x512",
-      "type": "image/svg+xml"
+      "type": "image/png"
     }
   ]
 }
