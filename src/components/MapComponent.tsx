@@ -6,13 +6,23 @@ import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, getZoomFo
 import { Star, MapPin as PinIcon, Navigation, Bookmark, ExternalLink, X, Volume2, VolumeX, CornerUpLeft, CornerUpRight, ArrowUp, Compass, LocateFixed, Plus, Minus, Radio, RefreshCw } from 'lucide-react';
 import { getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 
-const API_KEY =
-  process.env.GOOGLE_MAPS_PLATFORM_KEY ||
-  (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
-  (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
-  '';
+export const getActiveGoogleMapsKey = (): string => {
+  try {
+    const saved = localStorage.getItem('user_custom_maps_api_key');
+    if (saved && saved.trim().length > 10) return saved.trim();
+  } catch (e) {}
+  return (
+    process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+    (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+    (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
+    ''
+  );
+};
 
-const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
+export const isGoogleMapsConfigured = (): boolean => {
+  const k = getActiveGoogleMapsKey();
+  return Boolean(k) && k !== 'YOUR_API_KEY';
+};
 
 interface MapComponentProps {
   savedPlaces: SavedPlace[];
@@ -1492,18 +1502,20 @@ export function MapComponent(props: MapComponentProps & {
   onStopNavigation?: () => void;
 }) {
   const [apiError, setApiError] = useState(false);
+  const activeApiKey = getActiveGoogleMapsKey();
+  const hasKey = Boolean(activeApiKey) && activeApiKey !== 'YOUR_API_KEY';
 
-  if (!hasValidKey && !props.isDemoMode) {
+  if (!hasKey && !props.isDemoMode) {
     return <ApiKeySplash onEnableDemo={props.onEnableDemo} />;
   }
 
-  if ((!hasValidKey && props.isDemoMode) || apiError) {
+  if ((!hasKey && props.isDemoMode) || apiError) {
     return <DemoMap {...props} />;
   }
 
   return (
     <APIProvider 
-      apiKey={API_KEY} 
+      apiKey={activeApiKey} 
       version="weekly"
       onError={(err) => {
         console.warn('APIProvider error, falling back to DemoMap:', err);
