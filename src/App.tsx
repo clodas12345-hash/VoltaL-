@@ -559,17 +559,42 @@ export default function App() {
   }, []);
 
   const [categories, setCategories] = useState<PlaceCategory[]>(() => {
+    const DEFAULT_PRE_REGISTERED_CATEGORIES: PlaceCategory[] = [
+      'Restaurante',
+      'Padaria',
+      'Cafeteria',
+      'Lanchonete & Hambúrguer',
+      'Pizzaria',
+      'Bar & Pub',
+      'Boate & Balada',
+      'Supermercado',
+      'Farmácia & Drogaria',
+      'Shopping & Galerias',
+      'Posto de Combustível',
+      'Estacionamento',
+      'Hospital & Clínica',
+      'Academia & Esportes',
+      'Pet Shop & Veterinária',
+      'Hotel & Hospedagem',
+      'Parque & Lazer',
+      'Ponto Turístico',
+      'Oficina Mecânica',
+      'Salão & Barbearia',
+      'Outros'
+    ];
+
     try {
       const stored = localStorage.getItem('pinpoint_categories');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && !parsed.includes('Boate')) {
-          parsed.push('Boate');
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Merge defaults with user saved categories while preserving uniqueness
+          const merged = Array.from(new Set([...parsed, ...DEFAULT_PRE_REGISTERED_CATEGORIES]));
+          return merged;
         }
-        return parsed;
       }
     } catch (e) {}
-    return ['Padaria', 'Restaurante', 'Cafeteria', 'Supermercado', 'Farmácia', 'Shopping', 'Boate', 'Outros'];
+    return DEFAULT_PRE_REGISTERED_CATEGORIES;
   });
 
   // Save to localStorage whenever savedPlaces changes

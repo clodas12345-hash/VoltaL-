@@ -62,11 +62,11 @@ export function Header({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  // Debounce logic for precision searching
+  // Debounce logic for precision searching - optimized to 280ms for instant feel
   useEffect(() => {
     const timeout = setTimeout(() => {
       onSearchChange(localSearch);
-    }, 600);
+    }, 280);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localSearch]);

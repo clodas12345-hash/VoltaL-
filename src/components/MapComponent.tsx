@@ -6,6 +6,8 @@ import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, getZoomFo
 import { Star, MapPin as PinIcon, Navigation, Bookmark, ExternalLink, X, Volume2, VolumeX, CornerUpLeft, CornerUpRight, ArrowUp, Compass, LocateFixed, Plus, Minus, Radio, RefreshCw } from 'lucide-react';
 import { getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 
+export const DEFAULT_GOOGLE_MAPS_KEY = 'AIzaSyAIJinnkUYTK9D-JfUkvUci-c2vDOVaQDo';
+
 export const getActiveGoogleMapsKey = (): string => {
   try {
     const saved = localStorage.getItem('user_custom_maps_api_key');
@@ -15,7 +17,7 @@ export const getActiveGoogleMapsKey = (): string => {
     process.env.GOOGLE_MAPS_PLATFORM_KEY ||
     (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
     (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
-    ''
+    DEFAULT_GOOGLE_MAPS_KEY
   );
 };
 

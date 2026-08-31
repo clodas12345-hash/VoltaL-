@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, MapPin, Navigation, Star, Sparkles } from 'lucide-react';
+import { ICON_BASE64 } from '../iconBase64';
 
 export function GKDLogo({ 
   className = "h-8",
@@ -20,18 +21,11 @@ export function GKDLogo({
       >
         {/* Icon Graphic */}
         <div className="relative w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center shrink-0">
-          <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-sm" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Folded Map Base */}
-            <path d="M15 45L45 35L75 45L85 40V75L75 80L45 70L15 80V45Z" fill="#0B1B3D" />
-            <path d="M45 35V70" stroke="#38BDF8" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M15 45L45 55L75 45" stroke="#FFFFFF" strokeWidth="2.5" opacity="0.8" strokeLinecap="round"/>
-            <path d="M30 40L55 75" stroke="#FFFFFF" strokeWidth="2" opacity="0.6" strokeLinecap="round"/>
-            <path d="M60 42L40 73" stroke="#FFFFFF" strokeWidth="2" opacity="0.6" strokeLinecap="round"/>
-            
-            {/* Orange Map Pin */}
-            <path d="M50 8C38.9543 8 30 16.9543 30 28C30 42 50 62 50 62C50 62 70 42 70 28C70 16.9543 61.0457 8 50 8Z" fill="#F97316" />
-            <circle cx="50" cy="27" r="9" fill="white" />
-          </svg>
+          <img 
+            src={ICON_BASE64} 
+            alt="GKD Mobility" 
+            className="w-full h-full object-contain drop-shadow-sm rounded-lg"
+          />
         </div>
         {/* Text Mark */}
         <div className={`flex-col ${showTextOnMobile ? 'flex' : 'hidden sm:flex'}`}>
@@ -56,16 +50,12 @@ export function GKDLogo({
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="w-16 h-16 bg-white rounded-2xl shadow-lg flex items-center justify-center mb-3 p-2">
-                <svg viewBox="0 0 100 100" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M15 45L45 35L75 45L85 40V75L75 80L45 70L15 80V45Z" fill="#0B1B3D" />
-                  <path d="M45 35V70" stroke="#38BDF8" strokeWidth="3" strokeLinecap="round"/>
-                  <path d="M15 45L45 55L75 45" stroke="#FFFFFF" strokeWidth="2.5" opacity="0.8" strokeLinecap="round"/>
-                  <path d="M30 40L55 75" stroke="#FFFFFF" strokeWidth="2" opacity="0.6" strokeLinecap="round"/>
-                  <path d="M60 42L40 73" stroke="#FFFFFF" strokeWidth="2" opacity="0.6" strokeLinecap="round"/>
-                  <path d="M50 8C38.9543 8 30 16.9543 30 28C30 42 50 62 50 62C50 62 70 42 70 28C70 16.9543 61.0457 8 50 8Z" fill="#F97316" />
-                  <circle cx="50" cy="27" r="9" fill="white" />
-                </svg>
+              <div className="w-20 h-20 bg-white rounded-2xl shadow-xl flex items-center justify-center mb-3 p-1 border border-slate-200/60 overflow-hidden">
+                <img 
+                  src={ICON_BASE64} 
+                  alt="GKD Mobility" 
+                  className="w-full h-full object-contain rounded-xl"
+                />
               </div>
 
               <h2 className="text-xl font-bold tracking-tight">VoltaLá</h2>
