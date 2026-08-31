@@ -33,28 +33,29 @@ jobs:
     - name: Build Web Application
       run: npm run build
 
-    - name: Setup Android Project with Stable Capacitor 5
+    - name: Setup Android Project and Build APK
       run: |
         npm install @capacitor/core@5 @capacitor/cli@5 @capacitor/android@5 sharp
+        
+        # Garante a criação da estrutura completa do Android se o Manifest não existir
         npx cap init "VoltaLá" "com.voltala.app" --web-dir dist
         
-        if [ ! -d "android" ]; then
+        if [ ! -f "android/app/src/main/AndroidManifest.xml" ]; then
+          rm -rf android
           npx cap add android
-        else
-          echo "Pasta android já existe, atualizando sobre ela"
         fi
         
+        # Injeta permissões de GPS e Internet no AndroidManifest
+        MANIFEST="android/app/src/main/AndroidManifest.xml"
+        if [ -f "$MANIFEST" ]; then
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.INTERNET" />' "$MANIFEST"
+        fi
+        
+        # Gera ícones com Safe Zone do Android
         node scripts/generate-android-icons.cjs
         
         npx cap sync android
-
-    - name: Add Android Permissions to Manifest
-      run: |
-        MANIFEST="android/app/src/main/AndroidManifest.xml"
-        sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.INTERNET" />' $MANIFEST
-
-    - name: Build Debug APK with Gradle
-      run: |
+        
         cd android
         chmod +x gradlew
         ./gradlew assembleDebug --no-daemon
