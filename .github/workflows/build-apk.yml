@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK (VoltaLa)
 
 on:
   push:
@@ -10,59 +10,67 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Source Code
+    - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Setup Node.js Environment
+    - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: 20
+        node-version: 18
 
-    - name: Setup Java JDK 17
+    - name: Set up Java JDK
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
-        java-version: 17
+        java-version: '17'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-    - name: Install Project Dependencies
-      run: npm install
+    - name: Install Dependencies
+      run: |
+        npm install
 
     - name: Build Web Application
-      run: npm run build
-
-    - name: Setup Android Project and Build APK
       run: |
-        npm install @capacitor/core@5 @capacitor/cli@5 @capacitor/android@5 sharp
-        
-        # Garante a criação da estrutura completa do Android se o Manifest não existir
-        npx cap init "VoltaLá" "com.voltala.app" --web-dir dist
-        
-        if [ ! -f "android/app/src/main/AndroidManifest.xml" ]; then
+        npm run build
+
+    - name: Setup & Sync Capacitor Android
+      run: |
+        # Cria a pasta android caso ainda não exista
+        if [ ! -d "android" ] || [ ! -f "android/app/src/main/AndroidManifest.xml" ]; then
           rm -rf android
           npx cap add android
         fi
         
-        # Injeta permissões de GPS e Internet no AndroidManifest
+        # Injeta permissões de GPS e Internet no AndroidManifest se ainda não estiverem presentes
         MANIFEST="android/app/src/main/AndroidManifest.xml"
         if [ -f "$MANIFEST" ]; then
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.INTERNET" />' "$MANIFEST"
+          grep -q "ACCESS_FINE_LOCATION" "$MANIFEST" || sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.INTERNET" />' "$MANIFEST"
+        fi
+        
+        # Auto-incrementa versionCode para permitir instalar a atualização por cima sem desinstalar
+        GRADLE_FILE="android/app/build.gradle"
+        if [ -f "$GRADLE_FILE" ]; then
+          BUILD_NUM=${{ github.run_number }}
+          if [ -z "$BUILD_NUM" ] || [ "$BUILD_NUM" -eq 0 ]; then
+            BUILD_NUM=$(date +%s)
+          fi
+          sed -i "s/versionCode 1/versionCode $BUILD_NUM/g" "$GRADLE_FILE"
+          sed -i "s/versionName \"1.0\"/versionName \"1.0.$BUILD_NUM\"/g" "$GRADLE_FILE"
         fi
         
         # Gera ícones com Safe Zone do Android
         node scripts/generate-android-icons.cjs
         
+        # Sincroniza o build web com o Android
         npx cap sync android
-        
+
+    - name: Build Debug APK
+      run: |
         cd android
         chmod +x gradlew
-        ./gradlew assembleDebug --no-daemon
+        ./gradlew assembleDebug
 
-    - name: Upload Finished APK Artifact
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
         path: android/app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 7
