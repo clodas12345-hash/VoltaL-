@@ -10,71 +10,59 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Source Code
-      uses: actions/checkout@v4
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
 
-    - name: Setup Node.js Environment
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
 
-    - name: Setup Java JDK 21
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'zulu'
-        java-version: 21
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
 
-    - name: Install Project Dependencies
-      run: |
-        npm install --legacy-peer-deps
-        npm install --legacy-peer-deps @capacitor/core @capacitor/cli @capacitor/android sharp
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
 
-    - name: Build Web Application
-      run: |
-        npm run build
+      - name: Install Capacitor
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android --legacy-peer-deps
 
-    - name: Setup Android Project and Build APK
-      run: |
-        # Inicializa o capacitor de forma não-interativa
-        npx --yes @capacitor/cli init "VoltaLa" "com.voltala.app" --web-dir dist || true
-        
-        # Garante a criação da estrutura completa do Android se o Manifest não existir
-        if [ ! -f "android/app/src/main/AndroidManifest.xml" ]; then
-          rm -rf android
-          npx --yes @capacitor/cli add android
-        fi
-        
-        # Injeta permissões de GPS e Internet no AndroidManifest
-        MANIFEST="android/app/src/main/AndroidManifest.xml"
-        if [ -f "$MANIFEST" ]; then
-          grep -q "ACCESS_FINE_LOCATION" "$MANIFEST" || sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.INTERNET" />' "$MANIFEST"
-        fi
-        
-        # Auto-incrementa versionCode para permitir instalar a atualização por cima sem desinstalar
-        GRADLE_FILE="android/app/build.gradle"
-        if [ -f "$GRADLE_FILE" ]; then
-          BUILD_NUM=${{ github.run_number }}
-          if [ -z "$BUILD_NUM" ] || [ "$BUILD_NUM" -eq 0 ]; then
-            BUILD_NUM=$(date +%s)
+      - name: Build Web
+        run: npm run build
+
+      - name: Configure Capacitor
+        run: |
+          npx cap init "VoltaLa" "com.voltala.app" --web-dir dist || true
+          npx cap add android || true
+
+      - name: Add Android Permissions
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+
+          if [ -f "$MANIFEST" ]; then
+            sed -i '/<application/i\
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\
+              <uses-permission android:name="android.permission.INTERNET" />' "$MANIFEST"
           fi
-          sed -i "s/versionCode 1/versionCode $BUILD_NUM/g" "$GRADLE_FILE"
-          sed -i "s/versionName \"1.0\"/versionName \"1.0.$BUILD_NUM\"/g" "$GRADLE_FILE"
-        fi
-        
-        # Gera ícones com Safe Zone do Android
-        node scripts/generate-android-icons.cjs
-        
-        # Sincroniza os assets para o Android
-        npx --yes @capacitor/cli sync android
-        
-        # Compila o APK Debug
-        cd android
-        chmod +x gradlew
-        ./gradlew assembleDebug --no-daemon
 
-    - name: Upload Finished APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-debug
-        path: android/app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 7
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
