@@ -44,10 +44,15 @@ jobs:
           npx --yes @capacitor/cli add android
         fi
         
-        # Injeta permissões de GPS e Internet no AndroidManifest
+        # Injeta permissões de GPS e Internet no AndroidManifest de forma robusta
         MANIFEST="android/app/src/main/AndroidManifest.xml"
         if [ -f "$MANIFEST" ]; then
-          grep -q "ACCESS_FINE_LOCATION" "$MANIFEST" || sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.INTERNET" />' "$MANIFEST"
+          # Remove se já existir para não duplicar, depois adiciona
+          sed -i '/android.permission.ACCESS_FINE_LOCATION/d' "$MANIFEST"
+          sed -i '/android.permission.ACCESS_COARSE_LOCATION/d' "$MANIFEST"
+          sed -i '/android.permission.INTERNET/d' "$MANIFEST"
+          
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.INTERNET" />' "$MANIFEST"
         fi
         
         # Auto-incrementa versionCode para permitir instalar a atualização por cima sem desinstalar

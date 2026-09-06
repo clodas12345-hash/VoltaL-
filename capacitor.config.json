@@ -1,8 +1,14 @@
 {
   "appId": "com.voltala.app",
-  "appName": "VoltaLá",
+  "appName": "VoltaLa",
   "webDir": "dist",
+  "bundledWebRuntime": false,
   "server": {
     "androidScheme": "https"
+  },
+  "plugins": {
+    "Geolocation": {
+      "permissions": ["location"]
+    }
   }
 }
