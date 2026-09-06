@@ -7,7 +7,7 @@
 2. **GitHub Actions & Automação CI/CD**:
    - Usar estritamente as ações modernas e ativas do GitHub Actions:
      - `actions/checkout@v4`
-     - `actions/setup-node@v4` (com `node-version: 20`)
+     - `actions/setup-node@v4` (com `node-version: 22` para compatibilidade com Capacitor 7)
      - `actions/setup-java@v4` (com `java-version: 21` para total compatibilidade com Capacitor 7 Android)
      - `actions/upload-artifact@v4` (A versão `v3` foi descontinuada pelo GitHub e causa falha imediata).
    - Verificar se `android/app/src/main/AndroidManifest.xml` existe antes de rodar qualquer `sed` ou assumir que a pasta está pronta. Se a pasta `android` existir incompleta (sem AndroidManifest.xml), ela deve ser recriada com `npx cap add android`.
