@@ -16,25 +16,16 @@ export function GKDLogo({
     <>
       <div 
         onClick={() => setIsOpen(true)}
-        className={`relative flex items-center gap-1.5 select-none shrink-0 cursor-pointer hover:opacity-85 transition-opacity ${className}`}
+        className={`relative flex items-center select-none shrink-0 cursor-pointer hover:opacity-85 transition-opacity ${className}`}
         title="Clique para ver sobre o aplicativo"
       >
         {/* Icon Graphic */}
-        <div className="relative w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center shrink-0">
+        <div className="relative h-7 sm:h-9 flex items-center justify-center shrink-0">
           <img 
             src={ICON_BASE64} 
             alt="GKD Mobility" 
-            className="w-full h-full object-contain drop-shadow-sm rounded-lg"
+            className="h-full object-contain drop-shadow-sm rounded-lg"
           />
-        </div>
-        {/* Text Mark */}
-        <div className={`flex-col ${showTextOnMobile ? 'flex' : 'hidden sm:flex'}`}>
-          <span className="font-black tracking-tight text-[#0B1B3D] text-sm sm:text-base leading-none flex items-center">
-            GKD
-          </span>
-          <span className="text-[7px] sm:text-[7.5px] font-extrabold tracking-[0.25em] text-[#0B1B3D] opacity-80 uppercase mt-0.5">
-            MOBILITY
-          </span>
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { X, Trash2, Edit3, MapPin, Star, Navigation, Search, Bookmark, Filter, C
 import { SavedPlace, PlaceCategory } from '../types';
 import { getOpeningStatus, getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 import { parseAttachment, isValidAttachment } from '../utils/fileAttachment';
+import { getPlacePhoto } from '../utils/photoUtils';
 
 interface SavedPlacesSidebarProps {
   isOpen: boolean;
@@ -135,27 +136,52 @@ export function SavedPlacesSidebar({
                   onClick={() => { onSelectPlace(place); onClose(); }}
                   className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md transition-all flex flex-col gap-3 group cursor-pointer"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                          {place.category}
-                        </span>
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                          opStatus.isOpen 
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
-                            : 'bg-rose-50 text-rose-800 border-rose-300'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${opStatus.isOpen ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                          {opStatus.statusText}
-                        </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className="w-12 h-12 shrink-0 rounded-xl overflow-hidden shadow-sm border border-slate-200 bg-slate-50 flex items-center justify-center">
+                        {(() => {
+                          const displayPhoto = getPlacePhoto(place.name, place.photoUrl);
+                          const fallbackMapPhoto = `https://maps.googleapis.com/maps/api/staticmap?center=${place.lat},${place.lng}&zoom=17&size=100x100&maptype=roadmap&markers=color:blue%7C${place.lat},${place.lng}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}`;
+                          const finalFallback = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=100";
+
+                          return (
+                            <img 
+                              src={displayPhoto || fallbackMapPhoto} 
+                              alt={place.name} 
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                if (target.src === fallbackMapPhoto) {
+                                  target.src = finalFallback;
+                                } else if (target.src !== fallbackMapPhoto) {
+                                  target.src = fallbackMapPhoto;
+                                }
+                              }}
+                            />
+                          );
+                        })()}
                       </div>
-                      <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-600 transition-colors">
-                        {place.name}
-                      </h3>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                            {place.category}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                            opStatus.isOpen 
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
+                              : 'bg-rose-50 text-rose-800 border-rose-300'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${opStatus.isOpen ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                            {opStatus.statusText}
+                          </span>
+                        </div>
+                        <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-600 transition-colors">
+                          {place.name}
+                        </h3>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity shrink-0">
                       <button
                         onClick={(e) => { e.stopPropagation(); onEditPlace(place); }}
                         title="Editar categoria ou notas"

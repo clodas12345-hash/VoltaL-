@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'motion/react';
 import { X, Navigation, Star, MapPin, Eye, Radio, UtensilsCrossed, MoveHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { RadarAlert, MapPin as MapPinType } from '../types';
+import { getPlacePhoto } from '../utils/photoUtils';
 
 interface RadarAlertPopupProps {
   alert: RadarAlert | null;
@@ -180,21 +181,21 @@ export function RadarAlertPopup({
 
             {/* Restaurant Card Body */}
             <div className="flex gap-3 items-center">
-              {/* Photo Banner */}
-              <div className="w-24 h-24 rounded-2xl overflow-hidden bg-slate-800 border border-slate-700/90 shrink-0 relative shadow-md">
-                {place.photoUrl ? (
-                  <img
-                    src={place.photoUrl}
-                    alt={place.name}
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-emerald-400 bg-gradient-to-br from-emerald-950 to-slate-800 p-2 text-center">
-                    <UtensilsCrossed className="w-7 h-7 mb-1" />
-                    <span className="text-[9px] font-semibold text-slate-300">Restaurante</span>
-                  </div>
-                )}
+              {/* Photo Banner with Fallback Logo */}
+              <div className="w-24 h-24 rounded-2xl overflow-hidden bg-slate-800 border border-slate-700/90 shrink-0 relative shadow-md flex items-center justify-center">
+                {(() => {
+                  const displayPhoto = getPlacePhoto(place.name, place.photoUrl);
+                  return displayPhoto ? (
+                    <img
+                      src={displayPhoto}
+                      alt={place.name}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <MapPin className="w-8 h-8 text-slate-500 opacity-40" />
+                  );
+                })()}
                 
                 {/* Walking Time Badge */}
                 <div className="absolute bottom-1 right-1 bg-black/85 backdrop-blur-xs px-1.5 py-0.5 rounded text-[9px] font-bold text-emerald-300 border border-emerald-500/30">
@@ -208,12 +209,16 @@ export function RadarAlertPopup({
                   <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-400/30">
                     A {distText} de você
                   </span>
+                  <div className="flex items-center gap-1 bg-black/40 px-1.5 py-0.5 rounded-md border border-white/5">
+                    <Navigation className="w-2.5 h-2.5 text-blue-400" />
+                    <span className="text-[10px] font-bold text-blue-100">~{walkMinutes} min</span>
+                  </div>
                 </div>
 
-                <h3 className="text-base font-bold text-white truncate leading-tight mt-0.5">
+                <h3 className="text-base font-black text-white leading-tight truncate">
                   {place.name}
                 </h3>
-
+                
                 <div className="flex items-center gap-2 text-xs text-slate-300">
                   {place.rating && (
                     <div className="flex items-center gap-1 text-amber-400 font-bold">

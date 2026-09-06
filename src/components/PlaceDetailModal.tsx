@@ -7,6 +7,7 @@ import {
   Download, Eye, Paperclip, Copy, ExternalLink, FileSpreadsheet, FileArchive, FileCode, CheckCheck 
 } from 'lucide-react';
 import { PlaceCategory, SavedPlace } from '../types';
+import { getPlacePhoto } from '../utils/photoUtils';
 import { getOpeningStatus, getWeekdaySchedules, getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 import { 
   FileAttachment, 
@@ -322,84 +323,72 @@ export function PlaceDetailModal({
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
       <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden flex flex-col max-h-[90vh]">
         
-        {/* Photo Header if available */}
-        {place.photoUrl ? (
-          <div className="relative h-64 w-full bg-slate-100 group overflow-hidden shrink-0">
-            <div 
-              onClick={() => setShowMainPhotoOptions(true)}
-              className="absolute inset-0 block cursor-pointer"
-            >
-              <img 
-                src={place.photoUrl} 
-                alt={place.name} 
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/10 to-transparent transition-opacity" />
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <div className="bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-full flex items-center gap-2 text-sm font-medium border border-white/20 shadow-xl">
-                  <MapPin className="w-4 h-4" />
-                  <span>Ver Opções</span>
-                </div>
+        {/* Photo Header with Fallback Logo */}
+        <div className="relative h-64 w-full bg-slate-100 group overflow-hidden shrink-0 flex items-center justify-center">
+          <div 
+            onClick={() => setShowMainPhotoOptions(true)}
+            className="absolute inset-0 block cursor-pointer z-0 flex items-center justify-center bg-slate-200"
+          >
+            {(() => {
+              const displayPhoto = getPlacePhoto(place.name, place.photoUrl);
+              const fallbackMapPhoto = `https://maps.googleapis.com/maps/api/staticmap?center=${place.lat},${place.lng}&zoom=18&size=600x400&maptype=roadmap&markers=color:red%7C${place.lat},${place.lng}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}`;
+              
+              // Use a reliable placeholder if static maps also fails
+              const finalFallback = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=600";
+
+              return (
+                <img 
+                  src={displayPhoto || fallbackMapPhoto} 
+                  alt={place.name} 
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    if (target.src === fallbackMapPhoto) {
+                      target.src = finalFallback;
+                    } else if (target.src !== fallbackMapPhoto) {
+                      target.src = fallbackMapPhoto;
+                    }
+                  }}
+                />
+              );
+            })()}
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/10 to-transparent transition-opacity" />
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              <div className="bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-full flex items-center gap-2 text-sm font-medium border border-white/20 shadow-xl">
+                <MapPin className="w-4 h-4" />
+                <span>Ver Opções</span>
               </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="absolute top-3 right-3 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full backdrop-blur-md transition-colors z-10"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <div className="absolute bottom-3 left-4 right-4 text-white pointer-events-none z-10 flex items-end justify-between">
-              <div>
-                <h2 className="text-xl font-bold drop-shadow-sm">{name}</h2>
-                {distanceText && (
-                  <div className="flex items-center gap-1 text-xs text-blue-200 mt-0.5">
-                    <Navigation className="w-3.5 h-3.5" />
-                    <span>Aprox. {distanceText} de você</span>
-                  </div>
-                )}
-              </div>
-              {onNavigate && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onNavigate(); }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-bold shadow-lg transition-colors flex items-center gap-2 text-sm pointer-events-auto"
-                >
-                  <Navigation className="w-4 h-4" />
-                  Ir agora
-                </button>
-              )}
             </div>
           </div>
-        ) : (
-          <div className="p-5 pb-3 flex items-start justify-between border-b border-slate-100 bg-slate-50">
+          
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full backdrop-blur-md transition-colors z-20"
+          >
+            <X className="w-4 h-4" />
+          </button>
+
+          <div className="absolute bottom-3 left-4 right-4 text-white pointer-events-none z-10 flex items-end justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Detalhes do Local</h2>
+              <h2 className="text-xl font-bold drop-shadow-sm truncate pr-2">{name}</h2>
               {distanceText && (
-                <div className="flex items-center gap-1 text-xs text-blue-600 mt-1 font-medium">
+                <div className="flex items-center gap-1 text-xs text-blue-200 mt-0.5">
                   <Navigation className="w-3.5 h-3.5" />
                   <span>Aprox. {distanceText} de você</span>
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              {onNavigate && (
-                <button
-                  onClick={onNavigate}
-                  className="bg-blue-100 hover:bg-blue-200 text-blue-700 p-2.5 rounded-full transition-colors flex items-center shadow-sm"
-                  title="Ir agora"
-                >
-                  <Navigation className="w-5 h-5" />
-                </button>
-              )}
+            {onNavigate && (
               <button
-                onClick={onClose}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-200/60 transition-colors"
+                onClick={(e) => { e.stopPropagation(); onNavigate(); }}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-bold shadow-lg transition-colors flex items-center gap-2 text-sm pointer-events-auto"
               >
-                <X className="w-5 h-5" />
+                <Navigation className="w-4 h-4" />
+                Ir agora
               </button>
-            </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Content Body */}
         <div className="p-6 overflow-y-auto space-y-5">
@@ -800,7 +789,7 @@ export function PlaceDetailModal({
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isProcessingPhoto}
-                    className="flex items-center gap-1 text-xs text-indigo-700 font-medium hover:bg-indigo-100 bg-indigo-50 px-2 py-1.5 rounded-lg border border-indigo-200 transition-colors shadow-sm active:scale-95"
+                    className="flex items-center gap-1 text-xs text-indigo-700 font-medium hover:bg-indigo-100 bg-indigo-50 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition-colors shadow-sm active:scale-95"
                     title="PDF, TXT, Documentos, Planilhas e outros"
                   >
                     <FileText className="w-3.5 h-3.5" />

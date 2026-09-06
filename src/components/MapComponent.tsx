@@ -1,8 +1,10 @@
 import React, { Component, ReactNode, useEffect, useState, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
+import { motion, AnimatePresence } from 'motion/react';
 import { ApiKeySplash } from './ApiKeySplash';
 import { DemoMap } from './DemoMap';
 import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, getZoomForRadius } from '../types';
+import { getPlacePhoto } from '../utils/photoUtils';
 import { Star, MapPin as PinIcon, Navigation, Bookmark, ExternalLink, X, Volume2, VolumeX, CornerUpLeft, CornerUpRight, ArrowUp, Compass, LocateFixed, Plus, Minus, Radio, RefreshCw } from 'lucide-react';
 import { getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 
@@ -100,7 +102,7 @@ const getManeuverIcon = (maneuver?: string, instructions?: string) => {
   return <ArrowUp className="w-6 h-6 text-white" />;
 };
 
-const ThinPin = ({ color, isSaved, title }: { color?: string; isSaved?: boolean; title?: string }) => {
+const ThinPin = ({ color, isSaved, title, photoUrl }: { color?: string; isSaved?: boolean; title?: string; photoUrl?: string }) => {
   const pinColor = color || '#2563eb';
   return (
     <div 
@@ -114,75 +116,80 @@ const ThinPin = ({ color, isSaved, title }: { color?: string; isSaved?: boolean;
         </div>
       )}
 
-      {isSaved ? (
-        /* Saved Place: Vibrant Royal Blue Pushpin with Star badge */
-        <div className="relative flex flex-col items-center">
-          <svg width="34" height="46" viewBox="0 0 34 46" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="pinNeedleGrad" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#94a3b8" />
-                <stop offset="50%" stopColor="#ffffff" />
-                <stop offset="100%" stopColor="#64748b" />
-              </linearGradient>
-              <linearGradient id="bluePinHead" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#60a5fa" />
-                <stop offset="40%" stopColor="#2563eb" />
-                <stop offset="100%" stopColor="#1d4ed8" />
-              </linearGradient>
-            </defs>
-            {/* Ground Shadow ellipse */}
-            <ellipse cx="17" cy="44" rx="5" ry="2" fill="rgba(0,0,0,0.4)" />
-            {/* Metallic needle stem */}
-            <path d="M17 44L17 22" stroke="url(#pinNeedleGrad)" strokeWidth="2.5" strokeLinecap="round"/>
-            {/* Spherical Blue Pin Head */}
-            <circle cx="17" cy="16" r="14" fill="url(#bluePinHead)" stroke="#ffffff" strokeWidth="2"/>
-            <circle cx="17" cy="16" r="11" fill="#2563eb" />
-            {/* Star Icon in Center */}
-            <path 
-              d="M17 9L18.8 12.8L23 13.4L20 16.3L20.7 20.4L17 18.4L13.3 20.4L14 16.3L11 13.4L15.2 12.8L17 9Z" 
-              fill="#ffffff" 
-              stroke="#1d4ed8" 
-              strokeWidth="0.5" 
-              strokeLinejoin="round"
-            />
-            {/* Glossy Reflection Highlight */}
-            <ellipse cx="13" cy="12" rx="4" ry="2.5" transform="rotate(-30 13 12)" fill="rgba(255,255,255,0.6)" />
-          </svg>
-          {/* Floating mini badge */}
+      <div className="relative flex flex-col items-center">
+        <svg width="34" height="46" viewBox="0 0 34 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="pinNeedleGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#94a3b8" />
+              <stop offset="50%" stopColor="#ffffff" />
+              <stop offset="100%" stopColor="#64748b" />
+            </linearGradient>
+            <linearGradient id={isSaved ? "bluePinHead" : "bluePinHeadStd"} x1="0" y1="0" x2="1" y2="1">
+              {isSaved ? (
+                <>
+                  <stop offset="0%" stopColor="#60a5fa" />
+                  <stop offset="40%" stopColor="#2563eb" />
+                  <stop offset="100%" stopColor="#1d4ed8" />
+                </>
+              ) : (
+                <>
+                  <stop offset="0%" stopColor="#38bdf8" />
+                  <stop offset="35%" stopColor="#2563eb" />
+                  <stop offset="100%" stopColor="#1e40af" />
+                </>
+              )}
+            </linearGradient>
+          </defs>
+          {/* Ground Shadow ellipse */}
+          <ellipse cx="17" cy="44" rx="5" ry="2" fill="rgba(0,0,0,0.4)" />
+          {/* Metallic needle stem */}
+          <path d="M17 44L17 22" stroke="url(#pinNeedleGrad)" strokeWidth="2.5" strokeLinecap="round"/>
+          
+          {/* Pin Head - Circular or Hexagonal if preferred, keeping Circle for consistency */}
+          <circle cx="17" cy="16" r="15" fill={isSaved ? "url(#bluePinHead)" : "url(#bluePinHeadStd)"} stroke="#ffffff" strokeWidth="2"/>
+          
+          {/* Photo inside the Pin Head */}
+          {(() => {
+            const displayPhoto = getPlacePhoto(title, photoUrl);
+            return displayPhoto ? (
+              <foreignObject x="4.5" y="3.5" width="25" height="25" clipPath="circle(12.5px at 12.5px 12.5px)">
+                <div className="w-full h-full bg-slate-200">
+                  <img 
+                    src={displayPhoto} 
+                    alt={title || 'local'} 
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              </foreignObject>
+            ) : (
+              <>
+                <circle cx="17" cy="16" r="11" fill="#2563eb" />
+                {isSaved ? (
+                  <path 
+                    d="M17 9L18.8 12.8L23 13.4L20 16.3L20.7 20.4L17 18.4L13.3 20.4L14 16.3L11 13.4L15.2 12.8L17 9Z" 
+                    fill="#ffffff" 
+                    stroke="#1d4ed8" 
+                    strokeWidth="0.5" 
+                    strokeLinejoin="round"
+                  />
+                ) : (
+                  <circle cx="17" cy="16" r="3" fill="#ffffff" />
+                )}
+              </>
+            );
+          })()}
+          
+          {/* Glossy Reflection Highlight */}
+          <ellipse cx="11" cy="9" rx="4" ry="2.5" transform="rotate(-30 11 9)" fill="rgba(255,255,255,0.4)" />
+        </svg>
+
+        {isSaved && (
           <div className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-amber-400 rounded-full border-1.5 border-white flex items-center justify-center shadow-md">
             <Star className="w-2.5 h-2.5 fill-slate-900 text-slate-900" />
           </div>
-        </div>
-      ) : (
-        /* Standard Alfinete Azul (Classic Blue Pushpin / Needle Pin) */
-        <div className="relative flex flex-col items-center">
-          <svg width="28" height="40" viewBox="0 0 28 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="needleGradStd" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#94a3b8" />
-                <stop offset="50%" stopColor="#ffffff" />
-                <stop offset="100%" stopColor="#475569" />
-              </linearGradient>
-              <linearGradient id="bluePinHeadStd" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#38bdf8" />
-                <stop offset="35%" stopColor="#2563eb" />
-                <stop offset="100%" stopColor="#1e40af" />
-              </linearGradient>
-            </defs>
-            {/* Ground contact shadow */}
-            <ellipse cx="14" cy="38.5" rx="4" ry="1.5" fill="rgba(0,0,0,0.35)" />
-            {/* Metallic needle */}
-            <path d="M14 38.5L14 18" stroke="url(#needleGradStd)" strokeWidth="2.2" strokeLinecap="round"/>
-            {/* Blue spherical head */}
-            <circle cx="14" cy="14" r="12" fill={pinColor === '#2563eb' ? 'url(#bluePinHeadStd)' : pinColor} stroke="#ffffff" strokeWidth="2"/>
-            {/* Inner center core */}
-            <circle cx="14" cy="14" r="5" fill="#ffffff" fillOpacity="0.9" />
-            <circle cx="14" cy="14" r="2.5" fill="#1e40af" />
-            {/* Highlight bubble */}
-            <ellipse cx="10.5" cy="10.5" rx="3.5" ry="2" transform="rotate(-30 10.5 10.5)" fill="rgba(255,255,255,0.7)" />
-          </svg>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
@@ -223,12 +230,23 @@ function InnerMapController({
   const map = useMap();
   const mapsLib = useMapsLibrary('maps');
   const placesLib = useMapsLibrary('places');
-  const geocodingLib = useMapsLibrary('geocoding');
   const routesLib = useMapsLibrary('routes');
   const [hoveredPin, setHoveredPin] = useState<string | null>(null);
   const [isStreetViewActive, setIsStreetViewActive] = useState(false);
   const [currentStreetName, setCurrentStreetName] = useState<string | null>(null);
   const [isFollowingUser, setIsFollowingUser] = useState<boolean>(false);
+  const [isScanning, setIsScanning] = useState(false);
+
+  // Sync scanning state with search execution or radar activity
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const active = isExecutingSearchRef.current || (radarConfig?.isActive ?? false);
+      if (active !== isScanning) {
+        setIsScanning(active);
+      }
+    }, 200);
+    return () => clearInterval(timer);
+  }, [isScanning, radarConfig?.isActive]);
 
   // Static map mode (no automatic rotation or auto-following)
   const radiusCircleRef = useRef<google.maps.Circle | null>(null);
@@ -781,43 +799,53 @@ function InnerMapController({
 
   // Reverse geocode to get current street name and estimated right-side number
   useEffect(() => {
-    if (!geocodingLib || !userLocation) return;
-    const geocoder = new geocodingLib.Geocoder();
-    geocoder.geocode({ location: { lat: userLocation.lat, lng: userLocation.lng } })
-      .then((response) => {
-        if (response.results && response.results.length > 0) {
-          const result = response.results[0];
-          const route = result.address_components.find(c => c.types.includes('route'));
-          const streetNumComp = result.address_components.find(c => c.types.includes('street_number'));
-          
-          let street = '';
-          if (route) {
-            street = route.short_name || route.long_name;
-          } else if (result.address_components[0]) {
-            street = result.address_components[0].short_name;
-          }
+    if (!userLocation) return;
 
-          if (streetNumComp) {
-            let num = parseInt(streetNumComp.long_name, 10);
-            // Right side convention: ensure even or odd number based on typical urban addressing
-            if (!isNaN(num)) {
-              if (num % 2 !== 0) {
-                num += 1; // Make even for right side if odd
+    const performReverseGeocode = async () => {
+      try {
+        // Fallback to free Nominatim (OSM) service to bypass Google billing issues for simple geocoding
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${userLocation.lat}&lon=${userLocation.lng}&zoom=18&addressdetails=1`, {
+          headers: {
+            'Accept-Language': 'pt-BR,pt;q=0.9',
+            'User-Agent': 'VoltaLa-GKD-Mobility-App'
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.address) {
+            const street = data.address.road || data.address.pedestrian || data.address.suburb || '';
+            const houseNumber = data.address.house_number;
+            
+            if (houseNumber) {
+              let num = parseInt(houseNumber, 10);
+              if (!isNaN(num)) {
+                if (num % 2 !== 0) num += 1;
+                setCurrentStreetName(`${street}, ${num}`);
+              } else {
+                setCurrentStreetName(street);
               }
-              setCurrentStreetName(`${street}, ${num}`);
             } else {
-              setCurrentStreetName(street);
+              const syntheticNum = Math.abs(Math.round((userLocation.lat * 10000 + userLocation.lng * 10000) % 900)) + 100;
+              const rightSideNum = syntheticNum % 2 === 0 ? syntheticNum : syntheticNum + 1;
+              setCurrentStreetName(street ? `${street}, ${rightSideNum}` : null);
             }
-          } else {
-            // Estimate a realistic local number based on lat/lng coordinates if exact street number is missing
-            const syntheticNum = Math.abs(Math.round((userLocation.lat * 10000 + userLocation.lng * 10000) % 900)) + 100;
-            const rightSideNum = syntheticNum % 2 === 0 ? syntheticNum : syntheticNum + 1;
-            setCurrentStreetName(street ? `${street}, ${rightSideNum}` : null);
+            return;
           }
         }
-      })
-      .catch((e) => console.log('Geocoding error:', e));
-  }, [geocodingLib, userLocation?.lat, userLocation?.lng]);
+
+        // Final fallback: Synthetic number estimation if Nominatim fails
+        // We avoid Google Geocoder entirely as it requires billing which is currently disabled on the project
+        const syntheticNum = Math.abs(Math.round((userLocation.lat * 10000 + userLocation.lng * 10000) % 900)) + 100;
+        const rightSideNum = syntheticNum % 2 === 0 ? syntheticNum : syntheticNum + 1;
+        setCurrentStreetName(`Rua Estimada, ${rightSideNum}`);
+      } catch (e) {
+        console.log('Geocoding error:', e);
+      }
+    };
+
+    performReverseGeocode();
+  }, [userLocation?.lat, userLocation?.lng]);
 
   // Stable user location ref to prevent continuous GPS updates from re-triggering search
   const userLocationRef = useRef(userLocation);
@@ -954,7 +982,11 @@ function InnerMapController({
 
           // Determine category based on name, types, and search query
           let placeCategory: PlaceCategory = 'Outros';
-          const nameLower = (p.displayName || '').toLowerCase();
+          const nameStr = p.displayName?.text || p.displayName || p.name || '';
+          const nameLower = String(nameStr).toLowerCase();
+          
+          // Enrich photoUrl with fallback if needed
+          photoUrl = getPlacePhoto(nameStr, photoUrl);
           const types: string[] = p.types || [];
 
           if (
@@ -1008,7 +1040,7 @@ function InnerMapController({
 
           return {
             id: stableId,
-            name: p.displayName || 'Local sem nome',
+            name: String(nameStr) || 'Local sem nome',
             address: p.formattedAddress || '',
             lat: p.location?.lat() || 0,
             lng: p.location?.lng() || 0,
@@ -1054,6 +1086,33 @@ function InnerMapController({
 
   return (
     <>
+      {/* Real-time Radar Scan Animation (Varredura) */}
+      <AnimatePresence>
+        {isScanning && (
+          <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center overflow-hidden">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 0.15, scale: 2 }}
+              exit={{ opacity: 0 }}
+              transition={{ 
+                duration: 2, 
+                repeat: Infinity, 
+                ease: "linear" 
+              }}
+              className="w-full h-full border-[20px] border-emerald-400 rounded-full"
+              style={{
+                background: 'conic-gradient(from 0deg, rgba(52, 211, 153, 0.4) 0deg, transparent 90deg)',
+              }}
+            />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-2">
+               <div className="bg-emerald-500/80 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg backdrop-blur-md animate-pulse">
+                 VARRENDO ÁREA...
+               </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Map Click Listener to pin/save location */}
       <Map
         defaultCenter={{ lat: centerLat, lng: centerLng }}
@@ -1175,18 +1234,29 @@ function InnerMapController({
             const lat = e.detail.latLng.lat;
             const lng = e.detail.latLng.lng;
             
-            if ((window as any).google && (window as any).google.maps && (window as any).google.maps.Geocoder) {
-              const geocoder = new (window as any).google.maps.Geocoder();
-              geocoder.geocode({ location: { lat, lng } }, (results: any, status: string) => {
-                let exactAddress = '';
-                if (status === 'OK' && results && results[0]) {
-                  exactAddress = results[0].formatted_address;
+            const performContextGeocode = async () => {
+              try {
+                // Try free Nominatim first to avoid billing errors
+                const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18`, {
+                  headers: { 'Accept-Language': 'pt-BR,pt;q=0.9', 'User-Agent': 'VoltaLa-GKD-Mobility-App' }
+                });
+                
+                if (resp.ok) {
+                  const data = await resp.json();
+                  if (data && data.display_name) {
+                    onMapClickToAdd({ lat, lng, exactAddress: data.display_name });
+                    return;
+                  }
                 }
-                onMapClickToAdd({ lat, lng, exactAddress: exactAddress || undefined });
-              });
-            } else {
-              onMapClickToAdd({ lat, lng });
-            }
+
+                // If Nominatim fails, we skip Google Geocoding to avoid billing errors
+                onMapClickToAdd({ lat, lng });
+              } catch (err) {
+                onMapClickToAdd({ lat, lng });
+              }
+            };
+
+            performContextGeocode();
           }
         }}
       >
@@ -1251,7 +1321,7 @@ function InnerMapController({
                 onSelectPlaceToView(place);
               }}
             >
-              <ThinPin color={color} isSaved={true} title={place.name} />
+              <ThinPin color={color} isSaved={true} title={place.name} photoUrl={place.photoUrl} />
             </AdvancedMarker>
           );
         })}
@@ -1269,7 +1339,7 @@ function InnerMapController({
                 onSelectPlaceToView(pin);
               }}
             >
-              <ThinPin color="#2563eb" isSaved={isAlreadySaved} title={pin.name} />
+              <ThinPin color="#2563eb" isSaved={isAlreadySaved} title={pin.name} photoUrl={pin.photoUrl} />
             </AdvancedMarker>
           );
         })}

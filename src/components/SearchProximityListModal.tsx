@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, MapPin, Navigation, Star, Compass, Clock, Phone, DollarSign, ChevronDown, ChevronUp, SlidersHorizontal, Check } from 'lucide-react';
+import { X, MapPin, Navigation, Star, Compass, Clock, Phone, DollarSign, ChevronDown, ChevronUp, SlidersHorizontal, Check, Radio } from 'lucide-react';
 import { MapPin as MapPinType } from '../types';
+import { getPlacePhoto } from '../utils/photoUtils';
 import { getOpeningStatus, getWeekdaySchedules, getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 
 interface SearchProximityListModalProps {
@@ -35,7 +36,8 @@ export function SearchProximityListModal({
   searchRadiusMeters = 1500,
   onRadiusChange,
   searchQuery = '',
-}: SearchProximityListModalProps) {
+  onOpenRadar,
+}: SearchProximityListModalProps & { onOpenRadar?: () => void }) {
   const [expandedHoursPlaceId, setExpandedHoursPlaceId] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -157,28 +159,34 @@ export function SearchProximityListModal({
                   className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 transition-all shadow-xs hover:shadow-md hover:border-emerald-300 flex flex-col gap-3 group"
                 >
                   {/* Top info row */}
-                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 min-w-0 flex-1">
-                      {place.photoUrl ? (
-                        <div 
-                          className="w-12 h-12 shrink-0 rounded-xl overflow-hidden shadow-sm border border-slate-200 cursor-pointer bg-slate-100"
-                          onClick={() => onSelectPlace(place)}
-                        >
-                          <img 
-                            src={place.photoUrl} 
-                            alt={place.name} 
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
-                            referrerPolicy="no-referrer" 
-                          />
-                        </div>
-                      ) : (
-                        <div 
-                          className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20 cursor-pointer"
-                          onClick={() => onSelectPlace(place)}
-                        >
-                          {index + 1}
-                        </div>
-                      )}
+                      <div 
+                        className="w-12 h-12 shrink-0 rounded-xl overflow-hidden shadow-sm border border-slate-200 cursor-pointer bg-slate-50 flex items-center justify-center"
+                        onClick={() => onSelectPlace(place)}
+                      >
+                        {(() => {
+                          const displayPhoto = getPlacePhoto(place.name, place.photoUrl);
+                          const fallbackMapPhoto = `https://maps.googleapis.com/maps/api/staticmap?center=${place.lat},${place.lng}&zoom=17&size=100x100&maptype=roadmap&markers=color:red%7C${place.lat},${place.lng}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}`;
+                          const finalFallback = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=100";
+
+                          return (
+                            <img 
+                              src={displayPhoto || fallbackMapPhoto} 
+                              alt={place.name} 
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                if (target.src === fallbackMapPhoto) {
+                                  target.src = finalFallback;
+                                } else if (target.src !== fallbackMapPhoto) {
+                                  target.src = fallbackMapPhoto;
+                                }
+                              }}
+                            />
+                          );
+                        })()}
+                      </div>
                       
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
@@ -330,15 +338,28 @@ export function SearchProximityListModal({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
-          <span className="font-medium">
-            Mostrando <b>{sortedResults.length}</b> locais no raio de <b>{radiusFormatted}</b>
-          </span>
+        <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex flex-col gap-3">
+          <div className="flex items-center justify-between text-xs text-slate-600">
+            <span className="font-medium">
+              Mostrando <b>{sortedResults.length}</b> locais no raio de <b>{radiusFormatted}</b>
+            </span>
+            <button
+              onClick={onClose}
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
+            >
+              Concluído
+            </button>
+          </div>
+
           <button
-            onClick={onClose}
-            className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
+            onClick={() => {
+              if (onOpenRadar) onOpenRadar();
+              onClose();
+            }}
+            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
           >
-            Concluído
+            <Radio className="w-4 h-4 animate-pulse" />
+            <span>Ativar Varredura Radar em Tempo Real</span>
           </button>
         </div>
       </div>

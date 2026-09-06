@@ -10,107 +10,11 @@ import { RadarAlertPopup } from './components/RadarAlertPopup';
 import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, RadarAlert, getZoomForRadius } from './types';
 import { Compass, Navigation, Bookmark, Plus, MapPin, X, Radio } from 'lucide-react';
 import { InAppBrowser } from './components/InAppBrowser';
+import { REAL_SP_ESTABLISHMENTS } from './data/establishments';
 import { playRadarDetectionChime } from './utils/audio';
 import { getDistanceMeters, normalizeText, generateDemoRadarPlaces } from './utils/radarScanner';
 import { isValidAttachment } from './utils/fileAttachment';
-
-const REAL_SP_ESTABLISHMENTS = [
-  // Mexican food establishments
-  { 
-    name: 'El Tranvía Taquería & Bar Mexicano', 
-    address: 'R. Bela Cintra, 1850 - Consolação, São Paulo - SP', 
-    lat: -23.5585, 
-    lng: -46.6625, 
-    category: 'Restaurante', 
-    rating: 4.8, 
-    price: 'R$ 45 - R$ 90 por pessoa',
-    photoUrl: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=600&auto=format&fit=crop&q=80',
-    description: 'Autêntica culinária mexicana com tacos artesanais, quesadillas, guacamole fresco, burritos e drinks.'
-  },
-  { 
-    name: 'Si Señor Cocina Mexicana & Grill', 
-    address: 'Al. Santos, 1200 - Cerqueira César, São Paulo - SP', 
-    lat: -23.5650, 
-    lng: -46.6530, 
-    category: 'Restaurante', 
-    rating: 4.7, 
-    price: 'R$ 60 - R$ 110 por pessoa',
-    photoUrl: 'https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?w=600&auto=format&fit=crop&q=80',
-    description: 'Pratos mexicanos e tex-mex, nachos supremos, tacos crocantes, fajitas e margaritas.'
-  },
-  { 
-    name: 'Guacamole Cantina & Tacos', 
-    address: 'Rua Augusta, 1400 - Consolação, São Paulo - SP', 
-    lat: -23.5535, 
-    lng: -46.6575, 
-    category: 'Restaurante', 
-    rating: 4.8, 
-    price: 'R$ 50 - R$ 95 por pessoa',
-    photoUrl: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=600&auto=format&fit=crop&q=80',
-    description: 'Restaurante temático com tacos, burritos, quesadillas, tequilas e ambiente mexicano.'
-  },
-
-  // Maniçoba & Pará Food establishments
-  { 
-    name: 'Tacacá do Norte - Culinária Paraense & Maniçoba', 
-    address: 'Rua Vergueiro, 1045 - Paraíso, São Paulo - SP', 
-    lat: -23.5740, 
-    lng: -46.6430, 
-    category: 'Restaurante', 
-    rating: 4.9, 
-    price: 'R$ 40 - R$ 85 por pessoa',
-    photoUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&auto=format&fit=crop&q=80',
-    description: 'Famoso pela Maniçoba paraense cozida por 7 dias, Tacacá no tucupi com jambu e Pato no Tucupi.'
-  },
-  { 
-    name: 'Restaurante Amazônia - Sabores do Pará & Maniçoba', 
-    address: 'Rua Haddock Lobo, 950 - Cerqueira César, São Paulo - SP', 
-    lat: -23.5570, 
-    lng: -46.6620, 
-    category: 'Restaurante', 
-    rating: 4.8, 
-    price: 'R$ 55 - R$ 110 por pessoa',
-    photoUrl: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&auto=format&fit=crop&q=80',
-    description: 'Pratos tradicionais de Belém: Maniçoba fresca com paio e costelinha, peixes amazônicos e açaí.'
-  },
-  { 
-    name: 'Casa do Norte & Sabores do Pará', 
-    address: 'Rua Itinguçu, 850 - Cidade Patriarca, São Paulo - SP', 
-    lat: -23.5365, 
-    lng: -46.5115, 
-    category: 'Restaurante', 
-    rating: 4.8, 
-    price: 'R$ 35 - R$ 75 por pessoa',
-    photoUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&auto=format&fit=crop&q=80',
-    description: 'Comida paraense com Maniçoba caseira, tacacá no tucupi com jambu e farinha d água.'
-  },
-
-  { name: 'Padaria Bella Paulista', address: 'Rua Haddock Lobo, 354 - Cerqueira César, São Paulo - SP', lat: -23.5558, lng: -46.6558, category: 'Padaria', rating: 4.6, price: 'R$ 30 - R$ 60 por pessoa' },
-  { name: 'MASP (Museu de Arte de São Paulo)', address: 'Av. Paulista, 1578 - Bela Vista, São Paulo - SP', lat: -23.5614, lng: -46.6559, category: 'Outros', rating: 4.8, price: 'R$ 30 - R$ 50 por pessoa' },
-  { name: 'Club Yacht (Boate & Balada)', address: 'R. Treze de Maio, 703 - Bela Vista, São Paulo - SP', lat: -23.5590, lng: -46.6490, category: 'Boate', rating: 4.6, price: 'R$ 60 - R$ 120 por pessoa' },
-  { name: 'D-Edge Club (Boate Eletrônica)', address: 'Av. Olavo Bilac, 980 - Barra Funda, São Paulo - SP', lat: -23.5285, lng: -46.6620, category: 'Boate', rating: 4.7, price: 'R$ 80 - R$ 150 por pessoa' },
-  { name: 'Tokyo 東 (Boate, Bar & Karaokê)', address: 'R. Maj. Sertório, 110 - Vila Buarque, São Paulo - SP', lat: -23.5460, lng: -46.6480, category: 'Boate', rating: 4.5, price: 'R$ 50 - R$ 110 por pessoa' },
-  { name: 'Shopping Center Paulista', address: 'Rua Treze de Maio, 1947 - Bela Vista, São Paulo - SP', lat: -23.5701, lng: -46.6453, category: 'Shopping', rating: 4.5, price: 'R$ 50 - R$ 120 por pessoa' },
-  { name: 'Restaurante Spot', address: 'Min. Rocha Azevedo, 72 - Cerqueira César, São Paulo - SP', lat: -23.5572, lng: -46.6582, category: 'Restaurante', rating: 4.7, price: 'R$ 90 - R$ 180 por pessoa' },
-  { name: 'Starbucks Avenida Paulista', address: 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP', lat: -23.5630, lng: -46.6525, category: 'Cafeteria', rating: 4.4, price: 'R$ 15 - R$ 35 por pessoa' },
-  { name: 'Supermercado St. Marche', address: 'Rua da Consolação, 2467 - Consolação, São Paulo - SP', lat: -23.5532, lng: -46.6601, category: 'Supermercado', rating: 4.6, price: 'R$ 50 - R$ 110 por pessoa' },
-  { name: 'Drogaria São Paulo', address: 'Av. Paulista, 900 - Bela Vista, São Paulo - SP', lat: -23.5635, lng: -46.6510, category: 'Farmácia', rating: 4.3, price: 'R$ 20 - R$ 60 por pessoa' },
-  { name: 'Mister Rock Bar in Sampa', address: 'R. Palmeiras dos Índios, 32 - Cidade Patriarca, São Paulo - SP', lat: -23.5350, lng: -46.5120, category: 'Restaurante', rating: 4.8, price: 'R$ 40 - R$ 90 por pessoa' },
-  { name: 'Costelaria e Churrascaria Radial', address: 'Av. Calim Eid, 450 - Cidade Patriarca, São Paulo - SP', lat: -23.5320, lng: -46.5150, category: 'Restaurante', rating: 4.7, price: 'R$ 60 - R$ 130 por pessoa' },
-  { name: 'Chopperia & Espetinho do Juiz', address: 'Rua Itinguçu, 1200 - Cidade Patriarca, São Paulo - SP', lat: -23.5380, lng: -46.5100, category: 'Restaurante', rating: 4.6, price: 'R$ 30 - R$ 70 por pessoa' },
-  { name: 'Autorizada Brother ZL', address: 'Rua Samuel Rubli, 45 - Cidade Patriarca, São Paulo - SP', lat: -23.5360, lng: -46.5080, category: 'Outros', rating: 4.5, price: 'R$ 50 - R$ 150 por serviço' },
-  { name: 'Ateliê Paim & Design', address: 'Rua Manuel Leiroz, 88 - Cidade Patriarca, São Paulo - SP', lat: -23.5410, lng: -46.5050, category: 'Outros', rating: 4.9, price: 'R$ 40 - R$ 100 por pessoa' },
-  { name: 'Café Espresso Central', address: 'Av. Paulista, 1200 - Bela Vista, São Paulo - SP', lat: -23.5620, lng: -46.6550, category: 'Cafeteria', rating: 4.7, price: 'R$ 15 - R$ 40 por pessoa' },
-  { name: 'Restaurante Sabor Paulista', address: 'Rua Augusta, 800 - Consolação, São Paulo - SP', lat: -23.5540, lng: -46.6610, category: 'Restaurante', rating: 4.6, price: 'R$ 45 - R$ 95 por pessoa' },
-  { name: 'Farmácia Saúde Total', address: 'Al. Santos, 500 - Cerqueira César, São Paulo - SP', lat: -23.5680, lng: -46.6500, category: 'Farmácia', rating: 4.4, price: 'R$ 20 - R$ 55 por pessoa' },
-  { name: 'Supermercado Dia & Noite', address: 'Rua da Consolação, 1500 - Consolação, São Paulo - SP', lat: -23.5510, lng: -46.6590, category: 'Supermercado', rating: 4.3, price: 'R$ 35 - R$ 80 por pessoa' },
-  { name: 'Padaria Pão Dourado', address: 'Av. Brigadeiro Luís Antônio, 2000 - Bela Vista, São Paulo - SP', lat: -23.5640, lng: -46.6480, category: 'Padaria', rating: 4.9, price: 'R$ 15 - R$ 35 por pessoa' },
-  { name: 'Beco do Batman (Grafites)', address: 'Rua Gonçalo Afonso - Vila Madalena, São Paulo - SP', lat: -23.5562, lng: -46.6882, category: 'Outros', rating: 4.8, price: 'Gratuito' },
-  { name: 'Parque Ibirapuera (Portão 7)', address: 'Av. Pedro Álvares Cabral - Vila Mariana, São Paulo - SP', lat: -23.5874, lng: -46.6576, category: 'Outros', rating: 4.9, price: 'Gratuito' },
-  { name: 'Mercado Municipal de São Paulo (Mercadão)', address: 'Rua da Cantareira, 306 - Centro Histórico, São Paulo - SP', lat: -23.5447, lng: -46.6281, category: 'Restaurante', rating: 4.7, price: 'R$ 40 - R$ 90 por pessoa' },
-  { name: 'Pinacoteca de São Paulo', address: 'Praça da Luz, 2 - Luz, São Paulo - SP', lat: -23.5332, lng: -46.6322, category: 'Outros', rating: 4.8, price: 'R$ 15 - R$ 30 por pessoa' },
-  { name: 'Teatro Municipal de São Paulo', address: 'Praça Ramos de Azevedo, s/n - República, São Paulo - SP', lat: -23.5448, lng: -46.6388, category: 'Outros', rating: 4.8, price: 'R$ 20 - R$ 80 por pessoa' },
-];
+import { ICON_BASE64 } from './iconBase64';
 
 const STORAGE_KEY = 'google_maps_favoritos_places_v1';
 const RADAR_CONFIG_KEY = 'voltala_radar_config_v1';
@@ -169,6 +73,54 @@ const DEFAULT_SAVED_PLACES: SavedPlace[] = [
       'sexta-feira: 11:30 – 15:30, 18:30 – 00:00',
       'sábado: 11:30 – 00:00',
       'domingo: 11:30 – 22:00'
+    ],
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'default-baruel-1',
+    name: 'Bar e Restaurante João e Maria',
+    address: 'Av. Baruel, 368 - Vila Baruel, São Paulo - SP',
+    lat: -23.5095,
+    lng: -46.6650,
+    category: 'Restaurante',
+    rating: 4.6,
+    userRatingsTotal: 190,
+    phoneNumber: '+55 11 3966-0000',
+    priceLevel: 'R$ 40 - R$ 80 por pessoa',
+    photoUrl: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800&auto=format&fit=crop&q=80',
+    notes: 'Pratos comerciais bem servidos e tradicionais da região.',
+    openingHours: [
+      'segunda-feira: 11:00 – 22:00',
+      'terça-feira: 11:00 – 22:00',
+      'quarta-feira: 11:00 – 22:00',
+      'quinta-feira: 11:00 – 22:00',
+      'sexta-feira: 11:00 – 23:00',
+      'sábado: 11:00 – 23:00',
+      'domingo: 11:00 – 18:00'
+    ],
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'default-baruel-2',
+    name: 'Sushi Casa Verde',
+    address: 'R. Relíquia, 276 - Jardim das Laranjeiras, São Paulo - SP',
+    lat: -23.5085,
+    lng: -46.6635,
+    category: 'Restaurante',
+    rating: 4.8,
+    userRatingsTotal: 8974,
+    phoneNumber: '+55 11 2592-4456',
+    priceLevel: 'R$ 40 - R$ 80 por pessoa',
+    photoUrl: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=800&auto=format&fit=crop&q=80',
+    notes: 'Um dos sushis mais tradicionais e bem avaliados da Casa Verde.',
+    openingHours: [
+      'segunda-feira: 12:00 – 15:00, 18:00 – 23:30',
+      'terça-feira: 12:00 – 15:00, 18:00 – 23:30',
+      'quarta-feira: 12:00 – 15:00, 18:00 – 23:30',
+      'quinta-feira: 12:00 – 15:00, 18:00 – 23:30',
+      'sexta-feira: 12:00 – 15:00, 18:00 – 00:00',
+      'sábado: 12:00 – 00:00',
+      'domingo: 12:00 – 23:00'
     ],
     createdAt: new Date().toISOString(),
   },
@@ -924,6 +876,7 @@ export default function App() {
         phoneNumber: `+55 11 3${(hash % 900) + 100}-${(hash % 9000) + 1000}`,
         website: 'https://maps.google.com',
         priceLevel: est.price,
+        photoUrl: undefined,
         peakHours: 'Pico das 12h00 às 14h00 e 19h00 às 22h00',
         openingHours: [
           'segunda-feira: 08:00 – 22:00',
@@ -990,6 +943,7 @@ export default function App() {
       phoneNumber: '',
       website: '',
       priceLevel: placeType.price,
+      photoUrl: undefined, 
       peakHours: 'Pico das 12h00 às 14h00 e 19h00 às 22h00',
       openingHours: [
         'segunda-feira: 08:00 – 18:00',
@@ -1252,6 +1206,7 @@ export default function App() {
           });
           showToast('Navegador ativado com rotação dinâmica');
         }}
+        onOpenRadar={() => setIsRadarModalOpen(true)}
       />
 
       {/* Radar Configuration & Discovered Places Modal */}
