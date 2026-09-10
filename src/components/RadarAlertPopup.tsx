@@ -3,6 +3,7 @@ import { motion, AnimatePresence, PanInfo } from 'motion/react';
 import { X, Navigation, Star, MapPin, Eye, Radio, UtensilsCrossed, MoveHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { RadarAlert, MapPin as MapPinType } from '../types';
 import { getPlacePhoto } from '../utils/photoUtils';
+import { PhotoWithFallback } from './PhotoWithFallback';
 
 interface RadarAlertPopupProps {
   alert: RadarAlert | null;
@@ -184,21 +185,19 @@ export function RadarAlertPopup({
               {/* Photo Banner with Fallback Logo */}
               <div className="w-24 h-24 rounded-2xl overflow-hidden bg-slate-800 border border-slate-700/90 shrink-0 relative shadow-md flex items-center justify-center">
                 {(() => {
-                  const displayPhoto = getPlacePhoto(place.name, place.photoUrl);
-                  return displayPhoto ? (
-                    <img
-                      src={displayPhoto}
-                      alt={place.name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
+                  const displayPhoto = getPlacePhoto(place.name, place.photoUrl, { lat: place.lat, lng: place.lng });
+                  return (
+                    <PhotoWithFallback
+                      name={place.name}
+                      photoUrl={displayPhoto}
+                      category={place.category}
+                      className="w-full h-full"
                     />
-                  ) : (
-                    <MapPin className="w-8 h-8 text-slate-500 opacity-40" />
                   );
                 })()}
                 
                 {/* Walking Time Badge */}
-                <div className="absolute bottom-1 right-1 bg-black/85 backdrop-blur-xs px-1.5 py-0.5 rounded text-[9px] font-bold text-emerald-300 border border-emerald-500/30">
+                <div className="absolute bottom-1 right-1 bg-black/85 backdrop-blur-xs px-1.5 py-0.5 rounded text-[9px] font-bold text-emerald-300 border border-emerald-500/30 z-10">
                   ~{walkMinutes} min
                 </div>
               </div>

@@ -8,8 +8,8 @@ interface InAppBrowserProps {
 
 export function InAppBrowser({ url, onClose }: InAppBrowserProps) {
   return (
-    <div className="fixed inset-0 z-[200] bg-white flex flex-col animate-slideUp">
-      <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-slate-800 text-white shadow-lg">
+    <div className="fixed inset-0 z-[9999] bg-white flex flex-col animate-slideUp">
+      <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-slate-800 text-white shadow-lg shrink-0">
         <button onClick={onClose} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-xl transition-colors">
           <X className="w-5 h-5" />
         </button>

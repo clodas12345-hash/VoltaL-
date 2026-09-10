@@ -1,0 +1,33 @@
+GUIA DE SOLICITACAO DE REEMBOLSO - GOOGLE CLOUD PLATFORM
+
+Este documento contem as informacoes necessarias para solicitar o estorno de cobrancas indevidas relacionadas as APIs do Google Maps.
+
+1. O UNICO CAMINHO OFICIAL (CHAT COM HUMANO)
+O Google Cloud resolve questoes de faturamento exclusivamente atraves do console logado.
+
+PASSO A PASSO:
+1. Acesse: https://console.cloud.google.com/billing
+2. Selecione a Conta de Faturamento que recebeu a cobranca.
+3. No menu lateral esquerdo, clique em "Suporte".
+4. Clique no botao "Fale com o Suporte de Faturamento" (ou "Contact Billing Support").
+5. No chat que abrir, digite: "Solicitar estorno por erro de configuracao de API".
+6. Se o robo responder, continue digitando "Falar com atendente" ate ser conectado a uma pessoa real.
+
+2. ARGUMENTOS PARA O REEMBOLSO (DICAS)
+Use estes pontos no chat:
+* ERRO DE CONFIGURACAO: Informe que houve um erro na configuracao de cotas de uso.
+* USO INEXPERIENTE: Mencione que voce e um desenvolvedor individual e nao sabia da rapidez do consumo.
+* PRIMEIRA OCORRENCIA: Enfatize que foi a primeira vez e que voce ja bloqueou os servicos para evitar novos gastos.
+* CODIGO DE DEFESA DO CONSUMIDOR (BRASIL): Mencione que a falta de clareza sobre o consumo fere o dever de transparencia do CDC.
+
+3. TELEFONES DE APOIO (BRASIL)
+* Suporte Geral / Ads: 0800 727 0278 ou 0800 709 4664
+* Google Workspace: 0800 888 4414
+
+4. RESUMO DA VERDADE SOBRE SUPORTE
+* WhatsApp: NAO existe suporte oficial por WhatsApp.
+* E-mail Direto: NAO existe e-mail de entrada. Tudo e pelo painel.
+* Processo: Tudo comeca e termina dentro do Console do Google Cloud.
+
+Data deste registro: 06/09/2026
+Responsavel: Assistente AI Studio

@@ -4,10 +4,12 @@ import {
   X, Star, MapPin, Phone, Globe, Bookmark, Check, Sparkles, Navigation, 
   Clock, DollarSign, Users, MessageCircle, ChevronDown, ChevronUp, 
   AlertCircle, Camera, Trash2, ImagePlus, Plus, FileText, File, 
-  Download, Eye, Paperclip, Copy, ExternalLink, FileSpreadsheet, FileArchive, FileCode, CheckCheck 
+  Download, Eye, Paperclip, Copy, ExternalLink, FileSpreadsheet, FileArchive, FileCode, CheckCheck,
+  Compass, Tag, Info
 } from 'lucide-react';
 import { PlaceCategory, SavedPlace } from '../types';
 import { getPlacePhoto } from '../utils/photoUtils';
+import { PhotoWithFallback } from './PhotoWithFallback';
 import { getOpeningStatus, getWeekdaySchedules, getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 import { 
   FileAttachment, 
@@ -35,6 +37,7 @@ interface PlaceDetailModalProps {
     peakHours?: string;
     googleMapsUri?: string;
     description?: string;
+    category?: string;
   };
   onClose: () => void;
   onSave: (savedData: { name: string; category: PlaceCategory; notes: string; customPhotos?: string[]; rating?: number }) => void;
@@ -331,24 +334,12 @@ export function PlaceDetailModal({
           >
             {(() => {
               const displayPhoto = getPlacePhoto(place.name, place.photoUrl);
-              const fallbackMapPhoto = `https://maps.googleapis.com/maps/api/staticmap?center=${place.lat},${place.lng}&zoom=18&size=600x400&maptype=roadmap&markers=color:red%7C${place.lat},${place.lng}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}`;
-              
-              // Use a reliable placeholder if static maps also fails
-              const finalFallback = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=600";
-
               return (
-                <img 
-                  src={displayPhoto || fallbackMapPhoto} 
-                  alt={place.name} 
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (target.src === fallbackMapPhoto) {
-                      target.src = finalFallback;
-                    } else if (target.src !== fallbackMapPhoto) {
-                      target.src = fallbackMapPhoto;
-                    }
-                  }}
+                <PhotoWithFallback 
+                  name={place.name} 
+                  photoUrl={displayPhoto} 
+                  category={place.category}
+                  className="w-full h-full transition-transform duration-700 group-hover:scale-105"
                 />
               );
             })()}
@@ -575,6 +566,7 @@ export function PlaceDetailModal({
               </div>
             </div>
 
+            {/* Contato Section */}
             {place.phoneNumber && (
               <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
                 <span className="text-xs font-semibold text-slate-500 uppercase">Contato</span>
@@ -600,6 +592,36 @@ export function PlaceDetailModal({
                 </div>
               </div>
             )}
+
+            {/* Navigation Options Section */}
+            <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-2xl flex flex-col gap-2 mt-2">
+              <div className="flex items-center gap-2 text-blue-800 font-bold text-xs uppercase tracking-wider mb-1 px-1">
+                <Navigation className="w-3.5 h-3.5" />
+                <span>Opções de Navegação</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onNavigate && onNavigate(); }}
+                  className="bg-white hover:bg-blue-100 text-blue-700 border border-blue-200 py-3 rounded-xl font-bold text-xs transition-all flex flex-col items-center justify-center gap-1.5 shadow-sm active:scale-95"
+                >
+                  <Compass className="w-4 h-4" />
+                  <span>No VoltaLá</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const url = `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}&travelmode=driving`;
+                    window.open(url, '_blank');
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-xs transition-all flex flex-col items-center justify-center gap-1.5 shadow-md active:scale-95 shadow-blue-200"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Google Maps</span>
+                </button>
+              </div>
+            </div>
 
             {place.website && (
               <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 truncate">

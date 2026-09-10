@@ -1119,6 +1119,7 @@ export default function App() {
             }
           }}
           onNavigate={() => {
+            // Simply trigger internal navigation mode without blocking confirm
             setNavigationTarget({ lat: selectedPlaceToView.lat, lng: selectedPlaceToView.lng });
             setSelectedPlaceToView(null);
             setIsSavedSidebarOpen(false);
@@ -1130,7 +1131,7 @@ export default function App() {
               zoom: 18,
               timestamp: Date.now()
             });
-            showToast('Navegador ativado com rotação dinâmica');
+            showToast('Navegação iniciada');
           }}
           onOpenWebsite={setInAppBrowserUrl}
         />

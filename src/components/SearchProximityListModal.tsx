@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, MapPin, Navigation, Star, Compass, Clock, Phone, DollarSign, ChevronDown, ChevronUp, SlidersHorizontal, Check, Radio } from 'lucide-react';
 import { MapPin as MapPinType } from '../types';
 import { getPlacePhoto } from '../utils/photoUtils';
+import { PhotoWithFallback } from './PhotoWithFallback';
 import { getOpeningStatus, getWeekdaySchedules, getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 
 interface SearchProximityListModalProps {
@@ -167,22 +168,12 @@ export function SearchProximityListModal({
                       >
                         {(() => {
                           const displayPhoto = getPlacePhoto(place.name, place.photoUrl);
-                          const fallbackMapPhoto = `https://maps.googleapis.com/maps/api/staticmap?center=${place.lat},${place.lng}&zoom=17&size=100x100&maptype=roadmap&markers=color:red%7C${place.lat},${place.lng}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}`;
-                          const finalFallback = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=100";
-
                           return (
-                            <img 
-                              src={displayPhoto || fallbackMapPhoto} 
-                              alt={place.name} 
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                if (target.src === fallbackMapPhoto) {
-                                  target.src = finalFallback;
-                                } else if (target.src !== fallbackMapPhoto) {
-                                  target.src = fallbackMapPhoto;
-                                }
-                              }}
+                            <PhotoWithFallback 
+                              name={place.name} 
+                              photoUrl={displayPhoto} 
+                              category={place.category}
+                              className="w-full h-full"
                             />
                           );
                         })()}

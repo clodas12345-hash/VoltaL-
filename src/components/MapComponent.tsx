@@ -1,5 +1,6 @@
 import React, { Component, ReactNode, useEffect, useState, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
+import { Polyline } from './Polyline';
 import { motion, AnimatePresence } from 'motion/react';
 import { ApiKeySplash } from './ApiKeySplash';
 import { DemoMap } from './DemoMap';
@@ -74,6 +75,7 @@ interface MapComponentProps {
   radarConfig?: RadarConfig;
   onOpenRadar?: () => void;
   searchRadiusMeters?: number;
+  showToast?: (message: string) => void;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -102,8 +104,9 @@ const getManeuverIcon = (maneuver?: string, instructions?: string) => {
   return <ArrowUp className="w-6 h-6 text-white" />;
 };
 
-const ThinPin = ({ color, isSaved, title, photoUrl }: { color?: string; isSaved?: boolean; title?: string; photoUrl?: string }) => {
+const ThinPin = ({ color, isSaved, title, photoUrl, coords }: { color?: string; isSaved?: boolean; title?: string; photoUrl?: string; coords?: { lat: number, lng: number } }) => {
   const pinColor = color || '#2563eb';
+  const displayPhoto = getPlacePhoto(title, photoUrl, coords);
   return (
     <div 
       className="relative group cursor-pointer transform hover:scale-120 active:scale-95 transition-transform origin-bottom flex flex-col items-center select-none" 
@@ -145,40 +148,45 @@ const ThinPin = ({ color, isSaved, title, photoUrl }: { color?: string; isSaved?
           {/* Metallic needle stem */}
           <path d="M17 44L17 22" stroke="url(#pinNeedleGrad)" strokeWidth="2.5" strokeLinecap="round"/>
           
-          {/* Pin Head - Circular or Hexagonal if preferred, keeping Circle for consistency */}
-          <circle cx="17" cy="16" r="15" fill={isSaved ? "url(#bluePinHead)" : "url(#bluePinHeadStd)"} stroke="#ffffff" strokeWidth="2"/>
+          {/* Pin Head - Circular with photo */}
+          <circle cx="17" cy="16" r="16" fill="white" stroke={isSaved ? "#f59e0b" : "#2563eb"} strokeWidth="2.5"/>
           
-          {/* Photo inside the Pin Head */}
-          {(() => {
-            const displayPhoto = getPlacePhoto(title, photoUrl);
-            return displayPhoto ? (
-              <foreignObject x="4.5" y="3.5" width="25" height="25" clipPath="circle(12.5px at 12.5px 12.5px)">
-                <div className="w-full h-full bg-slate-200">
-                  <img 
-                    src={displayPhoto} 
-                    alt={title || 'local'} 
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-              </foreignObject>
-            ) : (
-              <>
-                <circle cx="17" cy="16" r="11" fill="#2563eb" />
-                {isSaved ? (
-                  <path 
-                    d="M17 9L18.8 12.8L23 13.4L20 16.3L20.7 20.4L17 18.4L13.3 20.4L14 16.3L11 13.4L15.2 12.8L17 9Z" 
-                    fill="#ffffff" 
-                    stroke="#1d4ed8" 
-                    strokeWidth="0.5" 
-                    strokeLinejoin="round"
-                  />
-                ) : (
-                  <circle cx="17" cy="16" r="3" fill="#ffffff" />
-                )}
-              </>
-            );
-          })()}
+          {displayPhoto ? (
+            <foreignObject x="3" y="2" width="28" height="28" clipPath="circle(14px at 14px 14px)">
+              <div className="w-full h-full bg-slate-200 flex items-center justify-center overflow-hidden">
+                <img 
+                  src={displayPhoto} 
+                  alt={title || 'local'} 
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    const img = e.target as HTMLImageElement;
+                    img.style.display = 'none';
+                    const parent = img.parentElement;
+                    if (parent) {
+                      parent.classList.add('bg-blue-600');
+                      parent.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center text-white p-0.5">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="w-3.5 h-3.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path></svg>
+                        <span class="text-[6px] font-black uppercase truncate w-full text-center">${title?.substring(0, 6) || ''}</span>
+                      </div>`;
+                    }
+                  }}
+                />
+              </div>
+            </foreignObject>
+          ) : (
+            <>
+              <circle cx="17" cy="16" r="13" fill={isSaved ? "#f59e0b" : "#2563eb"} />
+              {isSaved ? (
+                <path 
+                  d="M17 9L18.8 12.8L23 13.4L20 16.3L20.7 20.4L17 18.4L13.3 20.4L14 16.3L11 13.4L15.2 12.8L17 9Z" 
+                  fill="#ffffff" 
+                />
+              ) : (
+                <circle cx="17" cy="16" r="4" fill="#ffffff" />
+              )}
+            </>
+          )}
           
           {/* Glossy Reflection Highlight */}
           <ellipse cx="11" cy="9" rx="4" ry="2.5" transform="rotate(-30 11 9)" fill="rgba(255,255,255,0.4)" />
@@ -223,6 +231,7 @@ function InnerMapController({
   radarConfig,
   onOpenRadar,
   searchRadiusMeters = 1500,
+  showToast,
 }: MapComponentProps & {
   navigationTarget?: { lat: number; lng: number } | null;
   onStopNavigation?: () => void;
@@ -571,43 +580,137 @@ function InnerMapController({
       lastRoutedTargetRef.current = null; // allow retry
       setIsRecalculating(false);
       isRoutingInProgressRef.current = false;
-    });
-  }, [navigationTarget, directionsService, directionsRenderer, userLocation?.lat, userLocation?.lng, voiceEnabled]);
+      
+      // Fallback: Try OSRM street routing if Google API is denied (billing issues)
+      const errorStr = String(e).toUpperCase();
+      if (errorStr.includes('REQUEST_DENIED') || errorStr.includes('BILLING') || errorStr.includes('NOT ALLOWED')) {
+        const fetchOsrmRoute = async () => {
+          try {
+            const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLocation.lng},${userLocation.lat};${navigationTarget.lng},${navigationTarget.lat}?overview=full&geometries=geojson`);
+            const data = await response.json();
+            
+            if (data.code === 'Ok' && data.routes && data.routes[0]) {
+              const route = data.routes[0];
+              const streetPath = route.geometry.coordinates.map((coord: [number, number]) => 
+                new google.maps.LatLng(coord[1], coord[0])
+              );
+              
+              const mockResponse: any = {
+                routes: [{
+                  legs: [{
+                    distance: { text: (route.distance / 1000).toFixed(1) + " km", value: route.distance },
+                    duration: { text: Math.ceil(route.duration / 60) + " min", value: route.duration },
+                    steps: [{
+                      instructions: "Siga o traçado das ruas (Navegação via OSRM - Use Google Maps externo para voz curva a curva)",
+                      distance: { text: (route.distance / 1000).toFixed(1) + " km" },
+                      duration: { text: Math.ceil(route.duration / 60) + " min" },
+                      maneuver: "straight",
+                      start_location: new google.maps.LatLng(userLocation.lat, userLocation.lng),
+                      end_location: new google.maps.LatLng(navigationTarget.lat, navigationTarget.lng),
+                      polyline: null 
+                    }],
+                    start_location: new google.maps.LatLng(userLocation.lat, userLocation.lng),
+                    end_location: new google.maps.LatLng(navigationTarget.lat, navigationTarget.lng)
+                  }],
+                  overview_path: streetPath,
+                  bounds: new google.maps.LatLngBounds(
+                    new google.maps.LatLng(Math.min(userLocation.lat, navigationTarget.lat), Math.min(userLocation.lng, navigationTarget.lng)),
+                    new google.maps.LatLng(Math.max(userLocation.lat, navigationTarget.lat), Math.max(userLocation.lng, navigationTarget.lng))
+                  )
+                }]
+              };
+              
+              setDirectionsResult(mockResponse);
+              directionsRenderer.setDirections({ routes: [] } as any);
+              if (showToast) showToast('Rota pelas ruas carregada via serviço de backup');
+              return;
+            }
+          } catch (osrmError) {
+            console.error("OSRM fallback failed:", osrmError);
+          }
+          
+          // Final fallback to straight line if OSRM also fails
+          const straightLinePath = [
+            new google.maps.LatLng(userLocation.lat, userLocation.lng),
+            new google.maps.LatLng(navigationTarget.lat, navigationTarget.lng)
+          ];
+          
+          const mockResponse: any = {
+            routes: [{
+              legs: [{
+                distance: { text: (getDistance(userLocation, navigationTarget) / 1000).toFixed(1) + " km", value: getDistance(userLocation, navigationTarget) },
+                duration: { text: Math.ceil(getDistance(userLocation, navigationTarget) / 500) + " min", value: Math.ceil(getDistance(userLocation, navigationTarget) / 500) * 60 },
+                steps: [{
+                  instructions: "Siga em linha reta até o destino (Serviço de rotas Google indisponível)",
+                  distance: { text: (getDistance(userLocation, navigationTarget) / 1000).toFixed(1) + " km" },
+                  duration: { text: Math.ceil(getDistance(userLocation, navigationTarget) / 500) + " min" },
+                  maneuver: "straight",
+                  start_location: new google.maps.LatLng(userLocation.lat, userLocation.lng),
+                  end_location: new google.maps.LatLng(navigationTarget.lat, navigationTarget.lng),
+                  polyline: null 
+                }],
+                start_location: new google.maps.LatLng(userLocation.lat, userLocation.lng),
+                end_location: new google.maps.LatLng(navigationTarget.lat, navigationTarget.lng)
+              }],
+              overview_path: straightLinePath,
+              bounds: new google.maps.LatLngBounds(
+                new google.maps.LatLng(Math.min(userLocation.lat, navigationTarget.lat), Math.min(userLocation.lng, navigationTarget.lng)),
+                new google.maps.LatLng(Math.max(userLocation.lat, navigationTarget.lat), Math.max(userLocation.lng, navigationTarget.lng))
+              )
+            }]
+          };
+          
+          setDirectionsResult(mockResponse);
+          directionsRenderer.setDirections({ routes: [] } as any);
+          if (showToast) showToast('Aviso: Mostrando linha direta (Serviço de ruas indisponível)');
+        };
 
-  // Handle Turn-by-Turn logic
+        fetchOsrmRoute();
+      }
+    });
+  }, [navigationTarget, directionsService, directionsRenderer, userLocation?.lat, userLocation?.lng, voiceEnabled, showToast]);
+
+  // Handle Pro Turn-by-Turn logic
   useEffect(() => {
     if (!directionsResult || !userLocation || !navigationTarget) return;
     
     const steps = directionsResult.routes[0]?.legs[0]?.steps;
     if (!steps || currentStepIndex >= steps.length) return;
-
+    
     const currentStep = steps[currentStepIndex];
     if (!currentStep?.end_location) return;
 
-    const distToStepEnd = getDistance(
-      userLocation, 
-      { lat: currentStep.end_location.lat(), lng: currentStep.end_location.lng() }
-    );
+    const stepEnd = { lat: currentStep.end_location.lat(), lng: currentStep.end_location.lng() };
+    const distToStepEnd = getDistance(userLocation, stepEnd);
 
-    // If we are within 25 meters of the step's end location, move to next step smoothly
-    if (distToStepEnd < 25 && currentStepIndex < steps.length - 1) {
-      setCurrentStepIndex(prev => prev + 1);
-    }
-
-    // Voice announcement for the current step (only once per step)
-    if (voiceEnabled && lastSpokenStepRef.current !== currentStepIndex) {
-      lastSpokenStepRef.current = currentStepIndex;
-      const text = stripHtml(steps[currentStepIndex].instructions);
-      
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'pt-BR';
-        utterance.rate = 1.05;
-        window.speechSynthesis.speak(utterance);
+    // VOICE LOGIC: Proximity alerts
+    if (voiceEnabled) {
+      const stepText = stripHtml(currentStep.instructions);
+      if (lastSpokenStepRef.current !== currentStepIndex) {
+        lastSpokenStepRef.current = currentStepIndex;
+        speakText(stepText);
+      } else if (distToStepEnd < 150 && distToStepEnd > 120 && !lastSpokenProximityRef.current) {
+        lastSpokenProximityRef.current = true;
+        speakText(`Em 150 metros, ${stepText}`);
       }
     }
+
+    if (distToStepEnd < 20 && currentStepIndex < steps.length - 1) {
+      setCurrentStepIndex(prev => prev + 1);
+      lastSpokenProximityRef.current = false;
+    }
   }, [userLocation, directionsResult, currentStepIndex, voiceEnabled, navigationTarget]);
+
+  const speakText = (text: string) => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'pt-BR';
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const lastSpokenProximityRef = useRef(false);
 
   useEffect(() => {
     if (!map) return;
@@ -985,8 +1088,8 @@ function InnerMapController({
           const nameStr = p.displayName?.text || p.displayName || p.name || '';
           const nameLower = String(nameStr).toLowerCase();
           
-          // Enrich photoUrl with fallback if needed
-          photoUrl = getPlacePhoto(nameStr, photoUrl);
+          // Enrich photoUrl with fallback if needed (using real lat/lng for Street View fallback)
+          photoUrl = getPlacePhoto(nameStr, photoUrl, { lat: p.location?.lat() || 0, lng: p.location?.lng() || 0 });
           const types: string[] = p.types || [];
 
           if (
@@ -1194,6 +1297,9 @@ function InnerMapController({
                     }
                   } catch (err) {}
 
+                  // Apply professional fallback (Street View) if no official photo
+                  photoUrl = getPlacePhoto(place.displayName, photoUrl, { lat, lng });
+
                   const extractedHours = (place.regularOpeningHours?.weekdayDescriptions && place.regularOpeningHours.weekdayDescriptions.length > 0)
                     ? place.regularOpeningHours.weekdayDescriptions
                     : (place.currentOpeningHours?.weekdayDescriptions && place.currentOpeningHours.weekdayDescriptions.length > 0)
@@ -1260,6 +1366,19 @@ function InnerMapController({
           }
         }}
       >
+        {/* Fallback route line when Directions API fails */}
+        {directionsResult && !directionsResult.routes[0]?.legs[0]?.steps[0]?.polyline && (
+          <Polyline
+            path={directionsResult.routes[0].overview_path}
+            options={{
+              strokeColor: "#3b82f6",
+              strokeOpacity: 0.8,
+              strokeWeight: 6,
+              zIndex: 100
+            }}
+          />
+        )}
+
         {/* User Current Location Marker */}
         {userLocation && (
           <AdvancedMarker position={userLocation} title="Sua Localização">
@@ -1321,7 +1440,13 @@ function InnerMapController({
                 onSelectPlaceToView(place);
               }}
             >
-              <ThinPin color={color} isSaved={true} title={place.name} photoUrl={place.photoUrl} />
+              <ThinPin 
+              color={color} 
+              isSaved={true} 
+              title={place.name} 
+              photoUrl={place.photoUrl} 
+              coords={{ lat: place.lat, lng: place.lng }}
+            />
             </AdvancedMarker>
           );
         })}
@@ -1339,7 +1464,13 @@ function InnerMapController({
                 onSelectPlaceToView(pin);
               }}
             >
-              <ThinPin color="#2563eb" isSaved={isAlreadySaved} title={pin.name} photoUrl={pin.photoUrl} />
+              <ThinPin 
+              color="#2563eb" 
+              isSaved={isAlreadySaved} 
+              title={pin.name} 
+              photoUrl={pin.photoUrl} 
+              coords={{ lat: pin.lat, lng: pin.lng }}
+            />
             </AdvancedMarker>
           );
         })}
@@ -1354,85 +1485,89 @@ function InnerMapController({
         </div>
       )}
 
-      {/* Top Turn-by-Turn Route Guidance Card */}
-      {navigationTarget && (
-        <div className="absolute top-20 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:max-w-md z-50 pointer-events-auto transition-all animate-slideDown">
-          <div className="bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md flex flex-col gap-2">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shrink-0 shadow-md">
-                {getManeuverIcon(
-                  directionsResult?.routes[0]?.legs[0]?.steps[currentStepIndex]?.maneuver,
-                  directionsResult?.routes[0]?.legs[0]?.steps[currentStepIndex]?.instructions
-                )}
+      {/* PRO-NAVIGATION HUD: Professional Google Maps Interface */}
+      {navigationTarget && directionsResult && (
+        <div className="absolute top-4 left-4 right-4 z-[300] pointer-events-none flex flex-col gap-3">
+          <motion.div 
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="bg-emerald-700 text-white rounded-3xl shadow-2xl overflow-hidden pointer-events-auto border border-emerald-600/30"
+          >
+            <div className="p-4 flex items-center gap-4">
+              {/* Maneuver Icon Box */}
+              <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+                {(() => {
+                  const step = directionsResult.routes[0]?.legs[0]?.steps[currentStepIndex];
+                  const instr = (step?.instructions || '').toLowerCase();
+                  if (instr.includes('direita') || instr.includes('right')) return <Navigation className="w-8 h-8 rotate-90" />;
+                  if (instr.includes('esquerda') || instr.includes('left')) return <Navigation className="w-8 h-8 -rotate-90" />;
+                  return <Navigation className="w-8 h-8" />;
+                })()}
               </div>
+
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    {isRecalculating ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30 animate-pulse">
-                        <RefreshCw className="w-3 h-3 animate-spin text-amber-300" />
-                        Recalculando...
-                      </span>
-                    ) : (
-                      <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-                        {directionsResult?.routes[0]?.legs[0]?.steps[currentStepIndex]?.distance?.text || 'Em rota'}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {!isFollowingUser && (
-                      <button
-                        onClick={handleRecenter}
-                        className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded-md font-semibold transition-all text-[11px] flex items-center gap-1 shadow-sm"
-                        title="Centralizar no seu local"
-                      >
-                        <LocateFixed className="w-3 h-3" />
-                        <span>Centralizar</span>
-                      </button>
-                    )}
-                    <button
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-emerald-200 uppercase tracking-[0.2em]">
+                    {currentStepIndex === directionsResult.routes[0].legs[0].steps.length - 1 ? 'Destino Próximo' : 'Próxima Manobra'}
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <button 
                       onClick={() => setVoiceEnabled(!voiceEnabled)}
-                      className={`p-1 rounded-lg transition-colors ${voiceEnabled ? 'text-blue-400 hover:text-blue-300' : 'text-slate-500 hover:text-slate-400'}`}
-                      title={voiceEnabled ? "Desativar voz" : "Ativar voz"}
+                      className={`p-1.5 rounded-xl transition-all ${voiceEnabled ? 'bg-emerald-500/30 text-white' : 'bg-slate-800 text-slate-400'}`}
                     >
                       {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                     </button>
                     {onStopNavigation && (
                       <button
                         onClick={onStopNavigation}
-                        className="bg-red-500/80 hover:bg-red-600 text-white p-1 rounded-lg transition-colors text-xs font-semibold"
-                        title="Encerrar navegação"
+                        className="bg-red-600 text-white p-1.5 rounded-xl hover:bg-red-700 transition-colors"
                       >
                         <X className="w-4 h-4" />
                       </button>
                     )}
                   </div>
                 </div>
-                <div className="text-sm font-semibold text-slate-100 leading-snug line-clamp-2 mt-0.5">
+
+                <div className="text-lg font-black leading-tight truncate mt-0.5">
                   {directionsResult?.routes[0]?.legs[0]?.steps[currentStepIndex]?.instructions 
                     ? stripHtml(directionsResult.routes[0].legs[0].steps[currentStepIndex].instructions)
-                    : 'Siga a rota traçada no mapa até o destino'}
+                    : 'Siga a rota'}
+                </div>
+
+                <div className="text-emerald-300 font-bold text-sm">
+                  {(() => {
+                    const step = directionsResult.routes[0]?.legs[0]?.steps[currentStepIndex];
+                    if (!step || !userLocation) return '--';
+                    const dist = getDistance(userLocation, { lat: step.end_location.lat(), lng: step.end_location.lng() });
+                    return dist < 1000 ? `${Math.round(dist)}m` : `${(dist/1000).toFixed(1)}km`;
+                  })()}
                 </div>
               </div>
             </div>
+            
+            {/* Real-time Arrival Progress Bar */}
+            <div className="h-1.5 w-full bg-emerald-900/50">
+              <motion.div 
+                className="h-full bg-emerald-300"
+                initial={{ width: '0%' }}
+                animate={{ width: `${((currentStepIndex + 1) / directionsResult.routes[0].legs[0].steps.length) * 100}%` }}
+              />
+            </div>
+          </motion.div>
 
-            {/* Route summary ETA & total distance */}
-            {directionsResult?.routes[0]?.legs[0] && (
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs text-slate-400">
-                <div className="flex items-center gap-3">
-                  <span className="text-emerald-400 font-bold">
-                    {directionsResult.routes[0].legs[0].duration?.text || '-- min'}
-                  </span>
-                  <span>•</span>
-                  <span>{directionsResult.routes[0].legs[0].distance?.text || '-- km'}</span>
-                </div>
-                <span className="text-[11px] text-slate-400 font-medium">
-                  {isFollowingUser 
-                    ? `Passo ${currentStepIndex + 1} de ${directionsResult.routes[0].legs[0].steps.length}` 
-                    : 'Modo livre (zoom/pan)'}
-                </span>
+          {/* Statistics Floating Bubble */}
+          <div className="flex justify-center">
+            <div className="bg-slate-900/90 backdrop-blur-md px-5 py-2 rounded-2xl shadow-xl border border-white/10 flex items-center gap-5 text-white pointer-events-auto">
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Tempo</span>
+                <span className="text-sm font-black text-emerald-400">{directionsResult.routes[0].legs[0].duration?.text || '--'}</span>
               </div>
-            )}
+              <div className="w-px h-6 bg-slate-800" />
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Restante</span>
+                <span className="text-sm font-black">{directionsResult.routes[0].legs[0].distance?.text || '--'}</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
