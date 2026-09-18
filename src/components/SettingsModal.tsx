@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, HelpCircle, ListFilter, Plus, Trash2, Settings as SettingsIcon } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, HelpCircle, ListFilter, Plus, Trash2, Settings as SettingsIcon, Download, Upload, AlertTriangle } from 'lucide-react';
 import { PlaceCategory } from '../types';
 import { ICON_BASE64 } from '../iconBase64';
 
@@ -7,11 +7,95 @@ interface SettingsModalProps {
   onClose: () => void;
   categories: PlaceCategory[];
   setCategories: (cats: PlaceCategory[]) => void;
+  savedPlaces: any[];
+  setSavedPlaces: (places: any[]) => void;
+  radarConfig: any;
+  setRadarConfig: (config: any) => void;
 }
 
-export function SettingsModal({ onClose, categories, setCategories }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<'categories' | 'help'>('categories');
+export function SettingsModal({ 
+  onClose, 
+  categories, 
+  setCategories,
+  savedPlaces,
+  setSavedPlaces,
+  radarConfig,
+  setRadarConfig
+}: SettingsModalProps) {
+  const [activeTab, setActiveTab] = useState<'categories' | 'backup' | 'help'>('categories');
   const [newCat, setNewCat] = useState('');
+  const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    try {
+      const data = {
+        categories,
+        savedPlaces,
+        radarConfig,
+        version: '1.0',
+        exportedAt: new Date().toISOString()
+      };
+      
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const now = new Date();
+      const day = String(now.getDate()).padStart(2, '0');
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const year = now.getFullYear();
+      const dateStr = `${day}-${month}-${year}`;
+      
+      link.href = url;
+      link.download = `Backup_VoltaLa_${dateStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      setImportStatus({ type: 'success', message: 'Arquivo de backup gerado com sucesso!' });
+    } catch (e: any) {
+      setImportStatus({ type: 'error', message: `Erro ao exportar: ${e.message}` });
+    }
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const data = JSON.parse(content);
+        
+        if (!data.savedPlaces || !Array.isArray(data.savedPlaces)) {
+          throw new Error('Formato de backup inválido: lista de locais não encontrada.');
+        }
+
+        if (data.categories && Array.isArray(data.categories)) {
+          setCategories(data.categories);
+        }
+        
+        if (data.radarConfig) {
+          setRadarConfig(data.radarConfig);
+        }
+
+        setSavedPlaces(data.savedPlaces);
+        setImportStatus({ type: 'success', message: 'Backup restaurado com sucesso!' });
+        
+        // Reset file input
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } catch (err: any) {
+        setImportStatus({ type: 'error', message: `Erro na importação: ${err.message}` });
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const handleAddCat = (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,6 +145,12 @@ export function SettingsModal({ onClose, categories, setCategories }: SettingsMo
             <ListFilter className="w-4 h-4" /> Categorias
           </button>
           <button 
+            onClick={() => setActiveTab('backup')}
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${activeTab === 'backup' ? 'bg-white shadow-sm text-blue-700 border border-slate-200/60' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <Trash2 className="w-4 h-4" /> Backup
+          </button>
+          <button 
             onClick={() => setActiveTab('help')}
             className={`flex-1 py-2 px-2.5 rounded-xl text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${activeTab === 'help' ? 'bg-white shadow-sm text-blue-700 border border-slate-200/60' : 'text-slate-500 hover:bg-slate-100'}`}
           >
@@ -108,6 +198,77 @@ export function SettingsModal({ onClose, categories, setCategories }: SettingsMo
             </div>
           )}
 
+          {activeTab === 'backup' && (
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-sm">Backup e Sincronização</h3>
+                    <p className="text-[11px] text-slate-500">Mantenha seus dados seguros em arquivos JSON.</p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  <button 
+                    onClick={handleExport}
+                    className="flex flex-col items-center justify-center gap-2 bg-white border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50/30 p-4 rounded-2xl transition-all cursor-pointer group"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Download className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-bold text-slate-700">Exportar .JSON</span>
+                  </button>
+                  
+                  <button 
+                    onClick={handleImportClick}
+                    className="flex flex-col items-center justify-center gap-2 bg-white border-2 border-slate-100 hover:border-slate-800 hover:bg-slate-50 p-4 rounded-2xl transition-all cursor-pointer group"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-bold text-slate-700">Importar .JSON</span>
+                    <input 
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept=".json"
+                      className="hidden"
+                    />
+                  </button>
+                </div>
+
+                {importStatus && (
+                  <div className={`mt-4 p-3 rounded-xl text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-300 border ${
+                    importStatus.type === 'success' 
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                      : 'bg-red-50 text-red-700 border-red-200'
+                  }`}>
+                    {importStatus.message}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold text-amber-900">Atenção ao Importar</h4>
+                  <p className="text-[10px] text-amber-800 leading-relaxed font-medium">
+                    A importação de um novo arquivo <b>substituirá permanentemente</b> todos os seus locais salvos, categorias e configurações atuais.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl">
+                <h4 className="text-xs font-bold text-slate-800 mb-1">Como funciona?</h4>
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  O backup gera um arquivo de texto (.json) que contém todas as suas informações do app. Você pode guardar este arquivo no Google Drive, iCloud ou enviar para si mesmo para nunca perder seus lugares favoritos.
+                </p>
+              </div>
+            </div>
+          )}
           {activeTab === 'help' && (
             <div className="space-y-4 text-sm text-slate-600">
               <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 shadow-lg text-center flex flex-col items-center">

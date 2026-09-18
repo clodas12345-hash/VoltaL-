@@ -40,7 +40,7 @@ interface PlaceDetailModalProps {
     category?: string;
   };
   onClose: () => void;
-  onSave: (savedData: { name: string; category: PlaceCategory; notes: string; customPhotos?: string[]; rating?: number }) => void;
+  onSave: (savedData: { name: string; category: PlaceCategory; notes: string; customPhotos?: string[]; rating?: number; priceLevel?: string }) => void;
   existingSaved?: SavedPlace;
   userLocation?: { lat: number; lng: number } | null;
   categories: PlaceCategory[];
@@ -92,6 +92,9 @@ export function PlaceDetailModal({
   const [personalRating, setPersonalRating] = useState<number>(() => {
     return existingSaved?.rating || 0;
   });
+  const [manualPriceLevel, setManualPriceLevel] = useState<string>(() => {
+    return existingSaved?.priceLevel || place.priceLevel || '$$';
+  });
   const [customPhotos, setCustomPhotos] = useState<string[]>(() => {
     try {
       const draft = sessionStorage.getItem(`draft_${place.placeId || place.lat}`);
@@ -108,15 +111,15 @@ export function PlaceDetailModal({
   useEffect(() => {
     try {
       const validOnly = customPhotos.filter(isValidAttachment);
-      const draft = { name, category, notes, customPhotos: validOnly };
+      const draft = { name, category, notes, customPhotos: validOnly, personalRating, manualPriceLevel };
       sessionStorage.setItem(`draft_${place.placeId || place.lat}`, JSON.stringify(draft));
     } catch (e) {
       try {
-        const draftNoPhotos = { name, category, notes, customPhotos: [] };
+        const draftNoPhotos = { name, category, notes, customPhotos: [], personalRating, manualPriceLevel };
         sessionStorage.setItem(`draft_${place.placeId || place.lat}`, JSON.stringify(draftNoPhotos));
       } catch (e2) {}
     }
-  }, [name, category, notes, customPhotos, place.placeId, place.lat]);
+  }, [name, category, notes, customPhotos, personalRating, manualPriceLevel, place.placeId, place.lat]);
 
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -312,7 +315,14 @@ export function PlaceDetailModal({
   const handleSaveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    onSave({ name: name.trim(), category, notes, customPhotos, rating: personalRating || place.rating });
+    onSave({ 
+      name: name.trim(), 
+      category, 
+      notes, 
+      customPhotos, 
+      rating: personalRating || place.rating,
+      priceLevel: manualPriceLevel
+    });
     setSavedSuccess(true);
     // Remove auto-close so the user can see their photo was saved, they can close manually
   };
@@ -434,36 +444,80 @@ export function PlaceDetailModal({
           <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 space-y-2.5 text-sm">
             
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase">Avaliação Google</span>
-              <div className="flex items-center gap-2.5">
-                {typeof place.rating === 'number' && (
-                  <div className="flex items-center text-amber-500 font-semibold">
-                    <Star className="w-4 h-4 fill-amber-400 text-amber-400 mr-1" />
-                    <span>{place.rating.toFixed(1)}</span>
-                    {typeof place.userRatingsTotal === 'number' && (
-                      <span className="text-xs text-slate-400 ml-1">({place.userRatingsTotal})</span>
-                    )}
-                  </div>
-                )}
-                <a 
-                  href={googleReviewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-bold border border-amber-300 transition-colors shadow-xs active:scale-95"
-                  title="Escrever avaliação no Google"
-                >
-                  <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                  <span>Avaliar</span>
-                </a>
-              </div>
+              <span className="text-xs font-semibold text-slate-500 uppercase">
+                {(!place.placeId || place.placeId.startsWith('manual_')) ? 'Sua Avaliação' : 'Avaliação Google'}
+              </span>
+              {(!place.placeId || place.placeId.startsWith('manual_')) ? (
+                <div className="flex items-center gap-1 bg-amber-50 p-1.5 rounded-xl border border-amber-100">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setPersonalRating(star)}
+                      className="p-0.5 hover:scale-125 transition-transform"
+                    >
+                      <Star 
+                        className={`w-4 h-4 ${
+                          star <= personalRating 
+                            ? 'fill-amber-400 text-amber-400' 
+                            : 'text-slate-300'
+                        }`} 
+                      />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5">
+                  {typeof place.rating === 'number' && (
+                    <div className="flex items-center text-amber-500 font-semibold">
+                      <Star className="w-4 h-4 fill-amber-400 text-amber-400 mr-1" />
+                      <span>{place.rating.toFixed(1)}</span>
+                      {typeof place.userRatingsTotal === 'number' && (
+                        <span className="text-xs text-slate-400 ml-1">({place.userRatingsTotal})</span>
+                      )}
+                    </div>
+                  )}
+                  <a 
+                    href={googleReviewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs bg-amber-50 text-amber-700 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-bold border border-amber-300 transition-colors shadow-xs active:scale-95"
+                    title="Escrever avaliação no Google"
+                  >
+                    <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                    <span>Avaliar</span>
+                  </a>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase">Média de Preço</span>
-              <div className="flex items-center text-emerald-600 font-semibold text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                <DollarSign className="w-3.5 h-3.5 mr-0.5" />
-                <span>{place.priceLevel || '$$ • Moderado'}</span>
-              </div>
+              <span className="text-xs font-semibold text-slate-500 uppercase">
+                {(!place.placeId || place.placeId.startsWith('manual_')) ? 'Sua Faixa de Preço' : 'Média de Preço'}
+              </span>
+              {(!place.placeId || place.placeId.startsWith('manual_')) ? (
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  {['$', '$$', '$$$', '$$$$'].map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setManualPriceLevel(level)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all ${
+                        manualPriceLevel === level
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center text-emerald-600 font-semibold text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  <DollarSign className="w-3.5 h-3.5 mr-0.5" />
+                  <span>{place.priceLevel || '$$ • Moderado'}</span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between">

@@ -34,13 +34,33 @@ export function SavedPlacesSidebar({
 
   if (!isOpen) return null;
 
-  const filteredPlaces = savedPlaces.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.address.toLowerCase().includes(search.toLowerCase()) ||
-      (p.notes && p.notes.toLowerCase().includes(search.toLowerCase()));
-    const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredPlaces = savedPlaces
+    .filter((p) => {
+      const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+        p.address.toLowerCase().includes(search.toLowerCase()) ||
+        (p.notes && p.notes.toLowerCase().includes(search.toLowerCase()));
+      const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      if (!userLocation) return 0;
+      
+      const getDist = (place: SavedPlace) => {
+        const R = 6371;
+        const dLat = (place.lat - userLocation.lat) * (Math.PI / 180);
+        const dLng = (place.lng - userLocation.lng) * (Math.PI / 180);
+        const lat1 = userLocation.lat * (Math.PI / 180);
+        const lat2 = place.lat * (Math.PI / 180);
+        
+        const sa = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                 Math.cos(lat1) * Math.cos(lat2) *
+                 Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        const sc = 2 * Math.atan2(Math.sqrt(sa), Math.sqrt(1 - sa));
+        return R * sc;
+      };
+
+      return getDist(a) - getDist(b);
+    });
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-sm animate-fadeIn">
@@ -54,7 +74,9 @@ export function SavedPlacesSidebar({
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900">Locais Salvos</h2>
-              <p className="text-xs text-slate-500">{savedPlaces.length} locais na sua lista</p>
+              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
+                {userLocation ? 'Ordenados por proximidade' : `${savedPlaces.length} locais na sua lista`}
+              </p>
             </div>
           </div>
           <button
@@ -157,6 +179,12 @@ export function SavedPlacesSidebar({
                           <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                             {place.category}
                           </span>
+                          {distStr && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-black text-blue-600 bg-blue-50/50 px-2 py-0.5 rounded-full border border-blue-100">
+                              <Navigation className="w-2.5 h-2.5" />
+                              {distStr}
+                            </span>
+                          )}
                           <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
                             opStatus.isOpen 
                               ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 

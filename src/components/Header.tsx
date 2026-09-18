@@ -34,6 +34,7 @@ interface HeaderProps {
   onOpenSettings: () => void;
   searchRadiusMeters?: number;
   onSearchRadiusChange?: (radiusMeters: number) => void;
+  isPinningMode?: boolean;
 }
 
 export function Header({
@@ -56,6 +57,7 @@ export function Header({
   onOpenSettings,
   searchRadiusMeters = 1500,
   onSearchRadiusChange,
+  isPinningMode = false,
 }: HeaderProps) {
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const [isRadiusSelectorOpen, setIsRadiusSelectorOpen] = useState(false);
@@ -169,10 +171,12 @@ export function Header({
         <div className="flex items-center gap-2 pointer-events-auto justify-end mt-0">
           <button 
             onClick={onOpenAddCustomPin} 
-            className="bg-white/95 shadow-md p-2.5 rounded-full text-emerald-600 border border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
-            title="Adicionar Local"
+            className={`bg-white/95 shadow-md p-2.5 rounded-full border transition-all cursor-pointer ${
+              isPinningMode ? 'bg-emerald-600 text-white border-emerald-600 scale-110' : 'text-emerald-600 border-slate-100 hover:bg-slate-50'
+            }`}
+            title={isPinningMode ? "Clique no mapa para salvar" : "Adicionar Local"}
           >
-            <Plus className="w-4 h-4" />
+            <Plus className={`w-4 h-4 ${isPinningMode ? 'rotate-45' : ''} transition-transform`} />
           </button>
           <button 
             onClick={onOpenSaved} 
@@ -397,10 +401,12 @@ export function Header({
           )}
           <button 
             onClick={onOpenAddCustomPin} 
-            className="bg-white shadow-md p-2 sm:p-2.5 rounded-full text-emerald-600 border border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
-            title="Adicionar Local"
+            className={`bg-white shadow-md p-2 sm:p-2.5 rounded-full border transition-all cursor-pointer ${
+              isPinningMode ? 'bg-emerald-600 text-white border-emerald-600 scale-110' : 'text-emerald-600 border-slate-100 hover:bg-slate-50'
+            }`}
+            title={isPinningMode ? "Clique no mapa para salvar" : "Adicionar Local"}
           >
-            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+            <Plus className={`w-4 h-4 sm:w-5 sm:h-5 ${isPinningMode ? 'rotate-45' : ''} transition-transform`} />
           </button>
           <button 
             onClick={onOpenSaved} 

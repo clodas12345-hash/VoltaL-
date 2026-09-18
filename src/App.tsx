@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { MapComponent } from './components/MapComponent';
 import { Header } from './components/Header';
 import { SavedPlacesSidebar } from './components/SavedPlacesSidebar';
@@ -201,6 +202,9 @@ export default function App() {
   const [navigationTarget, setNavigationTarget] = useState<{lat: number, lng: number} | null>(null);
   const [compassHeading, setCompassHeading] = useState<number | null>(null);
   const [inAppBrowserUrl, setInAppBrowserUrl] = useState<string | null>(null);
+  const [isSimulatingDrive, setIsSimulatingDrive] = useState(false);
+  const [isPinningMode, setIsPinningMode] = useState(false);
+  const simulationIntervalRef = useRef<number | null>(null);
   const [resetNorthTrigger, setResetNorthTrigger] = useState(0);
   const [currentMapZoom, setCurrentMapZoom] = useState<number>(15);
   const [preFilterZoom, setPreFilterZoom] = useState<number | null>(null);
@@ -214,6 +218,50 @@ export default function App() {
     } catch (e) {}
     return 1500;
   });
+
+  // Simulated Drive Logic
+  useEffect(() => {
+    if (!isSimulatingDrive || !navigationTarget || !userLocation) {
+      if (simulationIntervalRef.current) {
+        clearInterval(simulationIntervalRef.current);
+        simulationIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // This is a simple simulation that moves the user towards the target
+    simulationIntervalRef.current = window.setInterval(() => {
+      setUserLocation(prev => {
+        if (!prev || !navigationTarget) return prev;
+        
+        const dist = Math.hypot(navigationTarget.lat - prev.lat, navigationTarget.lng - prev.lng);
+        if (dist < 0.0001) {
+          setIsSimulatingDrive(false);
+          showToast('Você chegou ao seu destino!');
+          return prev;
+        }
+
+        // Move ~5 meters per second (approx 0.00005 degrees)
+        const step = 0.00004;
+        const ratio = step / dist;
+        const newLat = prev.lat + (navigationTarget.lat - prev.lat) * ratio;
+        const newLng = prev.lng + (navigationTarget.lng - prev.lng) * ratio;
+        
+        // Calculate heading
+        const heading = (Math.atan2(navigationTarget.lng - prev.lng, navigationTarget.lat - prev.lat) * 180) / Math.PI;
+
+        return {
+          lat: newLat,
+          lng: newLng,
+          heading: (heading + 360) % 360
+        };
+      });
+    }, 1000);
+
+    return () => {
+      if (simulationIntervalRef.current) clearInterval(simulationIntervalRef.current);
+    };
+  }, [isSimulatingDrive, navigationTarget]);
 
   const handleSearchRadiusChange = (radius: number) => {
     setSearchRadius(radius);
@@ -245,6 +293,14 @@ export default function App() {
     }
     return DEFAULT_RADAR_CONFIG;
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(RADAR_CONFIG_KEY, JSON.stringify(radarConfig));
+    } catch (e) {
+      console.error('Failed to save radar config', e);
+    }
+  }, [radarConfig]);
 
   const [isRadarModalOpen, setIsRadarModalOpen] = useState(false);
   const [activeRadarAlert, setActiveRadarAlert] = useState<RadarAlert | null>(null);
@@ -539,10 +595,8 @@ export default function App() {
       const stored = localStorage.getItem('pinpoint_categories');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Merge defaults with user saved categories while preserving uniqueness
-          const merged = Array.from(new Set([...parsed, ...DEFAULT_PRE_REGISTERED_CATEGORIES]));
-          return merged;
+        if (Array.isArray(parsed)) {
+          return parsed;
         }
       }
     } catch (e) {}
@@ -792,7 +846,7 @@ export default function App() {
   };
 
   // Handle saving or updating place from modal
-  const handleSavePlace = ({ name, category, notes, customPhotos, rating }: { name: string; category: PlaceCategory; notes: string; customPhotos?: string[]; rating?: number }) => {
+  const handleSavePlace = ({ name, category, notes, customPhotos, rating, priceLevel }: { name: string; category: PlaceCategory; notes: string; customPhotos?: string[]; rating?: number; priceLevel?: string }) => {
     if (!selectedPlaceToView) return;
 
     const existingIndex = savedPlaces.findIndex(
@@ -811,6 +865,7 @@ export default function App() {
         name,
         customPhotos,
         rating: rating || updated[existingIndex].rating,
+        priceLevel: priceLevel || updated[existingIndex].priceLevel,
         address: selectedPlaceToView.address,
       };
       setSavedPlaces(updated);
@@ -831,7 +886,7 @@ export default function App() {
         photoUrl: selectedPlaceToView.photoUrl,
         notes,
         customPhotos,
-        priceLevel: selectedPlaceToView.priceLevel,
+        priceLevel: priceLevel || selectedPlaceToView.priceLevel,
         peakHours: selectedPlaceToView.peakHours,
         openingHours: selectedPlaceToView.openingHours,
         googleMapsUri: selectedPlaceToView.googleMapsUri,
@@ -840,6 +895,7 @@ export default function App() {
       setSavedPlaces([newPlace, ...savedPlaces]);
       showToast(`Local "${newPlace.name}" salvo como ${category}!`);
     }
+    setSelectedPlaceToView(null);
   };
 
   const handleDeletePlace = (id: string) => {
@@ -933,6 +989,7 @@ export default function App() {
 
     const placeType = types[hash % types.length];
 
+    setIsPinningMode(false);
     setSelectedPlaceToView({
       name: '',
       address: address,
@@ -998,29 +1055,63 @@ export default function App() {
           onFilterClick={handleFilterClick}
           categories={categories}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          isPinningMode={isPinningMode}
           onOpenAddCustomPin={() => {
-            if (!userLocation) {
-              handleLocateUser(true);
-              showToast('Buscando localização... Toque em qualquer lugar no mapa para marcar!');
-              // Puxa zoom para um padrão enquanto não acha, ou a pessoa clica depois
-              setFocusLocationTrigger({
-                lat: -23.5505,
-                lng: -46.6333,
-                zoom: 19,
-                timestamp: Date.now()
-              });
+            setIsPinningMode(!isPinningMode);
+            if (!isPinningMode) {
+              if (!userLocation) {
+                handleLocateUser(true);
+                showToast('Buscando localização... Toque em QUALQUER lugar no mapa para alfinetar!');
+                setFocusLocationTrigger({
+                  lat: -23.5505,
+                  lng: -46.6333,
+                  zoom: 19,
+                  timestamp: Date.now()
+                });
+              } else {
+                setFocusLocationTrigger({
+                  lat: userLocation.lat,
+                  lng: userLocation.lng,
+                  zoom: 19,
+                  timestamp: Date.now()
+                });
+                showToast('Modo Alfinete Ativado! Toque em qualquer lugar do mapa para salvar.');
+              }
             } else {
-              setFocusLocationTrigger({
-                lat: userLocation.lat,
-                lng: userLocation.lng,
-                zoom: 19,
-                timestamp: Date.now()
-              });
-              showToast('Toque em qualquer lugar do mapa para marcar e ver os detalhes!');
+              showToast('Modo Alfinete Desativado.');
             }
           }}
         />
       )}
+
+      {/* Floating Pinning Mode Hint */}
+      <AnimatePresence>
+        {isPinningMode && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: -20, x: '-50%' }}
+            className="absolute top-24 sm:top-28 left-1/2 z-40 pointer-events-none"
+          >
+            <div className="bg-emerald-600 text-white px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2.5 border-2 border-white/30 backdrop-blur-md">
+              <div className="relative">
+                <div className="w-2.5 h-2.5 bg-white rounded-full animate-ping absolute" />
+                <div className="w-2.5 h-2.5 bg-white rounded-full relative z-10" />
+              </div>
+              <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest">Toque no mapa para salvar local</span>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsPinningMode(false);
+                }}
+                className="pointer-events-auto ml-1 p-0.5 hover:bg-white/20 rounded-full transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Map Component */}
       <MapComponent
@@ -1036,6 +1127,7 @@ export default function App() {
         onZoomChange={setCurrentMapZoom}
         onSelectPlaceToView={(place) => {
           setTracking(false);
+          setIsPinningMode(false);
           setSelectedPlaceToView(place);
           setFocusLocationTrigger({
             lat: place.lat,
@@ -1048,6 +1140,7 @@ export default function App() {
         onClearActiveSelect={() => {
           setSelectedPlaceToView(null);
         }}
+        isPinningMode={isPinningMode}
         onMapClickToAdd={handleMapClickToAdd}
         searchResults={searchResults}
         onSearchResultsUpdate={(results) => setSearchResults(results)}
@@ -1100,6 +1193,10 @@ export default function App() {
           onClose={() => setIsSettingsOpen(false)}
           categories={categories}
           setCategories={setCategories}
+          savedPlaces={savedPlaces}
+          setSavedPlaces={setSavedPlaces}
+          radarConfig={radarConfig}
+          setRadarConfig={setRadarConfig}
         />
       )}
 
@@ -1125,13 +1222,17 @@ export default function App() {
             setIsSavedSidebarOpen(false);
             setIsProximityModalOpen(false);
             setTracking(true);
+            
+            // Auto-start simulation in preview mode for better UX verification
+            setIsSimulatingDrive(true);
+
             setFocusLocationTrigger({
               lat: userLocation ? userLocation.lat : selectedPlaceToView.lat,
               lng: userLocation ? userLocation.lng : selectedPlaceToView.lng,
               zoom: 18,
               timestamp: Date.now()
             });
-            showToast('Navegação iniciada');
+            showToast('Navegação iniciada (Simulação ativa)');
           }}
           onOpenWebsite={setInAppBrowserUrl}
         />

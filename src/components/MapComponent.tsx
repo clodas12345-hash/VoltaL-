@@ -6,7 +6,7 @@ import { ApiKeySplash } from './ApiKeySplash';
 import { DemoMap } from './DemoMap';
 import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, getZoomForRadius } from '../types';
 import { getPlacePhoto } from '../utils/photoUtils';
-import { Star, MapPin as PinIcon, Navigation, Bookmark, ExternalLink, X, Volume2, VolumeX, CornerUpLeft, CornerUpRight, ArrowUp, Compass, LocateFixed, Plus, Minus, Radio, RefreshCw } from 'lucide-react';
+import { Star, MapPin as PinIcon, Navigation, Bookmark, ExternalLink, X, Volume2, VolumeX, CornerUpLeft, CornerUpRight, ArrowUp, Compass, LocateFixed, Plus, Minus, Radio, RefreshCw, List, RotateCcw, RotateCw } from 'lucide-react';
 import { getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 
 export const DEFAULT_GOOGLE_MAPS_KEY = 'AIzaSyAIJinnkUYTK9D-JfUkvUci-c2vDOVaQDo';
@@ -76,6 +76,7 @@ interface MapComponentProps {
   onOpenRadar?: () => void;
   searchRadiusMeters?: number;
   showToast?: (message: string) => void;
+  isPinningMode?: boolean;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -232,6 +233,7 @@ function InnerMapController({
   onOpenRadar,
   searchRadiusMeters = 1500,
   showToast,
+  isPinningMode = false,
 }: MapComponentProps & {
   navigationTarget?: { lat: number; lng: number } | null;
   onStopNavigation?: () => void;
@@ -493,9 +495,10 @@ function InnerMapController({
         map,
         suppressMarkers: true,
         polylineOptions: {
-          strokeColor: '#3b82f6',
-          strokeWeight: 6,
-          strokeOpacity: 0.8
+          strokeColor: '#1d4ed8',
+          strokeWeight: 10,
+          strokeOpacity: 0.9,
+          zIndex: 50
         }
       }));
     }
@@ -710,7 +713,8 @@ function InnerMapController({
     }
   };
 
-  const lastSpokenProximityRef = useRef(false);
+  const [lastSpokenProximityRef, setLastSpokenProximityRef] = useState(false);
+  const [showSteps, setShowSteps] = useState(false);
 
   useEffect(() => {
     if (!map) return;
@@ -1241,7 +1245,7 @@ function InnerMapController({
           renderingType: "VECTOR"
         } as any}
         internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-        style={{ width: '100%', height: '100vh' }}
+        style={{ width: '100%', height: '100vh', cursor: isPinningMode ? 'crosshair' : 'grab' }}
         onDrag={() => {
           setIsFollowingUser(false);
           if (onMapDragStart) onMapDragStart();
@@ -1264,7 +1268,8 @@ function InnerMapController({
 
             // Only intercept clicks on native points of interest
             // Do NOT trigger on blank map clicks to avoid annoying accidental pins
-            if (placeId) {
+            // UNLESS pinning mode is ACTIVE, in which case we allow any click!
+            if (placeId || isPinningMode) {
               try {
                 if (typeof (e.detail as any).stop === 'function') {
                   (e.detail as any).stop();
@@ -1276,6 +1281,12 @@ function InnerMapController({
                   (e as any).domEvent.preventDefault();
                 }
               } catch (err) {}
+              
+              // If it's a manual pin click on blank space
+              if (!placeId && isPinningMode) {
+                onMapClickToAdd({ lat, lng });
+                return;
+              }
 
               if (placesLib && placesLib.Place) {
                 const place = new placesLib.Place({ id: placeId });
@@ -1381,7 +1392,7 @@ function InnerMapController({
 
         {/* User Current Location Marker */}
         {userLocation && (
-          <AdvancedMarker position={userLocation} title="Sua Localização">
+          <AdvancedMarker position={userLocation} title="Sua Localização" zIndex={200}>
             <div className="relative flex items-center justify-center pointer-events-none">
               {/* Dynamic Directional Field-of-View Cone (Facing beam) */}
               {(mapHeading !== undefined || userLocation.heading !== undefined) && (
@@ -1460,6 +1471,7 @@ function InnerMapController({
               key={`search-${pin.id}`}
               position={{ lat: pin.lat, lng: pin.lng }}
               title={pin.name}
+              zIndex={50}
               onClick={() => {
                 onSelectPlaceToView(pin);
               }}
@@ -1487,88 +1499,179 @@ function InnerMapController({
 
       {/* PRO-NAVIGATION HUD: Professional Google Maps Interface */}
       {navigationTarget && directionsResult && (
-        <div className="absolute top-4 left-4 right-4 z-[300] pointer-events-none flex flex-col gap-3">
+        <div className="absolute top-0 left-0 right-0 z-[300] pointer-events-none flex flex-col items-center">
+          {/* Main Direction Card */}
           <motion.div 
             initial={{ y: -100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="bg-emerald-700 text-white rounded-3xl shadow-2xl overflow-hidden pointer-events-auto border border-emerald-600/30"
+            className="w-full max-w-lg bg-emerald-600 text-white shadow-2xl overflow-hidden pointer-events-auto border-b border-emerald-500/30"
           >
             <div className="p-4 flex items-center gap-4">
               {/* Maneuver Icon Box */}
-              <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+              <div className="w-16 h-16 bg-emerald-800/40 rounded-2xl flex items-center justify-center shrink-0 border border-white/10 shadow-inner">
                 {(() => {
                   const step = directionsResult.routes[0]?.legs[0]?.steps[currentStepIndex];
                   const instr = (step?.instructions || '').toLowerCase();
-                  if (instr.includes('direita') || instr.includes('right')) return <Navigation className="w-8 h-8 rotate-90" />;
-                  if (instr.includes('esquerda') || instr.includes('left')) return <Navigation className="w-8 h-8 -rotate-90" />;
-                  return <Navigation className="w-8 h-8" />;
+                  const maneuver = (step?.maneuver || '').toLowerCase();
+                  
+                  if (maneuver.includes('right') || instr.includes('direita')) return <div className="flex flex-col items-center"><Navigation className="w-9 h-9 rotate-90 text-white" /><span className="text-[8px] font-black mt-1">DIREITA</span></div>;
+                  if (maneuver.includes('left') || instr.includes('esquerda')) return <div className="flex flex-col items-center"><Navigation className="w-9 h-9 -rotate-90 text-white" /><span className="text-[8px] font-black mt-1">ESQUERDA</span></div>;
+                  if (maneuver.includes('u-turn') || instr.includes('retorno')) return <div className="flex flex-col items-center"><RotateCcw className="w-8 h-8 text-white" /><span className="text-[8px] font-black mt-1">RETORNO</span></div>;
+                  if (instr.includes('rotatória') || instr.includes('roundabout')) return <div className="flex flex-col items-center"><RotateCw className="w-8 h-8 text-white" /><span className="text-[8px] font-black mt-1">ROTATÓRIA</span></div>;
+                  if (instr.includes('reto') || instr.includes('straight')) return <div className="flex flex-col items-center"><Navigation className="w-8 h-8 text-white" /><span className="text-[8px] font-black mt-1">RETO</span></div>;
+                  
+                  return <div className="flex flex-col items-center"><Navigation className="w-9 h-9 text-white" /><span className="text-[8px] font-black mt-1">SIGA</span></div>;
                 })()}
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black text-emerald-200 uppercase tracking-[0.2em]">
-                    {currentStepIndex === directionsResult.routes[0].legs[0].steps.length - 1 ? 'Destino Próximo' : 'Próxima Manobra'}
-                  </span>
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between mb-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-100 text-[10px] font-black tracking-[0.2em] uppercase opacity-70">
+                      {currentStepIndex === directionsResult.routes[0].legs[0].steps.length - 1 ? 'Chegada' : 'Siga'}
+                    </span>
+                    <span className="text-xl font-black tabular-nums">
+                      {(() => {
+                        const step = directionsResult.routes[0]?.legs[0]?.steps[currentStepIndex];
+                        if (!step || !userLocation) return '--';
+                        const dist = getDistance(userLocation, { lat: step.end_location.lat(), lng: step.end_location.lng() });
+                        return dist < 1000 ? `${Math.round(dist)} m` : `${(dist/1000).toFixed(1)} km`;
+                      })()}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <button 
                       onClick={() => setVoiceEnabled(!voiceEnabled)}
-                      className={`p-1.5 rounded-xl transition-all ${voiceEnabled ? 'bg-emerald-500/30 text-white' : 'bg-slate-800 text-slate-400'}`}
+                      className={`p-2 rounded-full transition-all ${voiceEnabled ? 'bg-white/20 text-white' : 'bg-red-500/30 text-red-100'}`}
+                      title="Voz Ativada"
                     >
-                      {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                      {voiceEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
                     </button>
                     {onStopNavigation && (
                       <button
                         onClick={onStopNavigation}
-                        className="bg-red-600 text-white p-1.5 rounded-xl hover:bg-red-700 transition-colors"
+                        className="bg-white/10 text-white p-2 rounded-full hover:bg-white/20 transition-colors"
+                        title="Parar Navegação"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-5 h-5" />
                       </button>
                     )}
                   </div>
                 </div>
 
-                <div className="text-lg font-black leading-tight truncate mt-0.5">
+                <div className="text-[17px] font-bold leading-tight line-clamp-2 pr-2">
                   {directionsResult?.routes[0]?.legs[0]?.steps[currentStepIndex]?.instructions 
                     ? stripHtml(directionsResult.routes[0].legs[0].steps[currentStepIndex].instructions)
-                    : 'Siga a rota'}
+                    : 'Siga na direção indicada'}
                 </div>
-
-                <div className="text-emerald-300 font-bold text-sm">
-                  {(() => {
-                    const step = directionsResult.routes[0]?.legs[0]?.steps[currentStepIndex];
-                    if (!step || !userLocation) return '--';
-                    const dist = getDistance(userLocation, { lat: step.end_location.lat(), lng: step.end_location.lng() });
-                    return dist < 1000 ? `${Math.round(dist)}m` : `${(dist/1000).toFixed(1)}km`;
-                  })()}
+                
+                <div className="flex items-center gap-3 mt-1.5">
+                  <button 
+                    onClick={() => setShowSteps(!showSteps)}
+                    className="text-[9px] font-black text-emerald-100/60 flex items-center gap-1 hover:text-white transition-colors bg-black/10 px-2 py-0.5 rounded-full"
+                  >
+                    <List className="w-2.5 h-2.5" />
+                    {showSteps ? 'OCULTAR PASSOS' : 'LISTA DE PASSOS'}
+                  </button>
+                  
+                  {/* Manually trigger recalculation if user feels off-track */}
+                  <button 
+                    onClick={() => {
+                      lastRoutedTargetRef.current = null;
+                      setIsRecalculating(true);
+                      if (onLocateUser) onLocateUser();
+                    }}
+                    className="text-[9px] font-black text-emerald-100/60 flex items-center gap-1 hover:text-white transition-colors bg-black/10 px-2 py-0.5 rounded-full"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" />
+                    RECALCULAR
+                  </button>
                 </div>
               </div>
             </div>
             
-            {/* Real-time Arrival Progress Bar */}
-            <div className="h-1.5 w-full bg-emerald-900/50">
+            {/* Steps Panel */}
+            <AnimatePresence>
+              {showSteps && (
+                <motion.div 
+                  initial={{ height: 0 }}
+                  animate={{ height: 'auto' }}
+                  exit={{ height: 0 }}
+                  className="bg-emerald-800/90 backdrop-blur-md overflow-hidden"
+                >
+                  <div className="max-h-60 overflow-y-auto p-4 flex flex-col gap-3">
+                    {directionsResult.routes[0].legs[0].steps.map((step, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`flex gap-3 items-start p-2 rounded-xl transition-colors ${idx === currentStepIndex ? 'bg-emerald-500/30 border border-white/20' : 'opacity-60'}`}
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+                          <Navigation className={`w-4 h-4 ${idx === currentStepIndex ? 'text-white' : 'text-emerald-300'}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-xs ${idx === currentStepIndex ? 'font-bold text-white' : 'text-emerald-100'}`}>
+                            {stripHtml(step.instructions)}
+                          </div>
+                          <div className="text-[10px] text-emerald-300 mt-0.5">
+                            {step.distance?.text} • {step.duration?.text}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
+            {/* Progress Bar */}
+            <div className="h-1.5 w-full bg-emerald-900/30">
               <motion.div 
-                className="h-full bg-emerald-300"
+                className="h-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.5)]"
                 initial={{ width: '0%' }}
                 animate={{ width: `${((currentStepIndex + 1) / directionsResult.routes[0].legs[0].steps.length) * 100}%` }}
               />
             </div>
           </motion.div>
 
-          {/* Statistics Floating Bubble */}
-          <div className="flex justify-center">
-            <div className="bg-slate-900/90 backdrop-blur-md px-5 py-2 rounded-2xl shadow-xl border border-white/10 flex items-center gap-5 text-white pointer-events-auto">
-              <div className="flex flex-col items-center">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Tempo</span>
-                <span className="text-sm font-black text-emerald-400">{directionsResult.routes[0].legs[0].duration?.text || '--'}</span>
-              </div>
-              <div className="w-px h-6 bg-slate-800" />
-              <div className="flex flex-col items-center">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Restante</span>
-                <span className="text-sm font-black">{directionsResult.routes[0].legs[0].distance?.text || '--'}</span>
-              </div>
+          {/* Secondary Stats Info Bar */}
+          <div className="mt-2 bg-slate-900/80 backdrop-blur-xl border border-white/10 px-6 py-2 rounded-full shadow-2xl flex items-center gap-8 text-white pointer-events-auto">
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] text-slate-400 font-bold uppercase">Distância</span>
+              <span className="text-base font-black">{directionsResult.routes[0].legs[0].distance?.text || '--'}</span>
+            </div>
+            <div className="w-px h-8 bg-white/10" />
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] text-slate-400 font-bold uppercase text-emerald-400">Tempo</span>
+              <span className="text-base font-black text-emerald-400">{directionsResult.routes[0].legs[0].duration?.text || '--'}</span>
+            </div>
+            <div className="w-px h-8 bg-white/10" />
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] text-slate-400 font-bold uppercase">Chegada</span>
+              <span className="text-base font-black">
+                {(() => {
+                  const now = new Date();
+                  const durationSec = directionsResult.routes[0].legs[0].duration?.value || 0;
+                  const arrival = new Date(now.getTime() + durationSec * 1000);
+                  return arrival.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                })()}
+              </span>
             </div>
           </div>
+          
+          {/* Recalculating Overlay */}
+          <AnimatePresence>
+            {isRecalculating && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="mt-4 bg-red-600/90 text-white px-6 py-2 rounded-2xl shadow-xl flex items-center gap-3 font-black text-sm uppercase tracking-widest border border-red-500"
+              >
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                Recalculando Rota...
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
