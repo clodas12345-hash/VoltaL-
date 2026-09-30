@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, MapPin, Navigation, Star, Compass, Clock, Phone, DollarSign, ChevronDown, ChevronUp, SlidersHorizontal, Check, Radio } from 'lucide-react';
+import { X, MapPin, Navigation, Star, Compass, Clock, Phone, MessageCircle, DollarSign, ChevronDown, ChevronUp, SlidersHorizontal, Check, Radio } from 'lucide-react';
 import { MapPin as MapPinType } from '../types';
 import { getPlacePhoto } from '../utils/photoUtils';
 import { PhotoWithFallback } from './PhotoWithFallback';
@@ -281,7 +281,7 @@ export function SearchProximityListModal({
 
                     {/* Telefone para contato se disponível */}
                     {place.phoneNumber && (
-                      <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <div className="flex items-center gap-1.5 text-xs text-slate-600 flex-wrap">
                         <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span className="font-semibold text-slate-500 text-[11px]">Telefone:</span>
                         <a 
@@ -291,6 +291,24 @@ export function SearchProximityListModal({
                         >
                           {place.phoneNumber}
                         </a>
+                        {(() => {
+                          const cleanPhone = place.phoneNumber ? place.phoneNumber.replace(/\D/g, '') : '';
+                          const whatsappUrl = cleanPhone ? (cleanPhone.startsWith('55') ? `https://wa.me/${cleanPhone}` : `https://wa.me/55${cleanPhone}`) : undefined;
+                          if (!whatsappUrl) return null;
+                          return (
+                            <a
+                              href={whatsappUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 rounded-md font-semibold border border-emerald-200 transition-colors ml-1"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Abrir no WhatsApp"
+                            >
+                              <MessageCircle className="w-3 h-3 text-emerald-600" />
+                              <span>WhatsApp</span>
+                            </a>
+                          );
+                        })()}
                       </div>
                     )}
 

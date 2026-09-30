@@ -1144,6 +1144,15 @@ export default function App() {
         activeSelectedPlace={selectedPlaceToView}
         onClearActiveSelect={() => {
           setSelectedPlaceToView(null);
+          if (searchQuery) {
+            const center = userLocation || { lat: -23.5505, lng: -46.6333 };
+            setFocusLocationTrigger({
+              lat: center.lat,
+              lng: center.lng,
+              zoom: getZoomForRadius(searchRadius),
+              timestamp: Date.now()
+            });
+          }
         }}
         isPinningMode={isPinningMode}
         onMapClickToAdd={handleMapClickToAdd}
