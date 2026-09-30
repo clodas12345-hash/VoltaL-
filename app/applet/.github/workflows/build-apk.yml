@@ -1,114 +1,135 @@
-name: build
+name: Build Android APK
 
 on:
   push:
-    branches: [main, master]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+    - name: Setup Node.js Environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
 
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
+    - name: Setup Java JDK 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: 21
 
-      - name: Build web app
-        run: npm run build
+    - name: Install Project Dependencies
+      run: |
+        npm install --legacy-peer-deps
+        npm install --legacy-peer-deps @capacitor/core @capacitor/cli @capacitor/android sharp
 
-      - name: Install Capacitor
-        run: npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/assets --legacy-peer-deps
+    - name: Build Web Application
+      run: |
+        npm run build
 
-      - name: Generate Assets
-        run: node scripts/generate-android-icons.cjs || echo "Skipping custom asset generation"
+    - name: Setup Android Project
+      run: |
+        # Inicializa o capacitor de forma não-interativa
+        npx --yes @capacitor/cli init "VoltaLa" "com.voltala.app" --web-dir dist || true
 
-      - name: Add Android platform
-        run: |
+        # Garante a criação da estrutura completa do Android se o Manifest não existir
+        if [ ! -f "android/app/src/main/AndroidManifest.xml" ]; then
           rm -rf android
-          npx --yes @capacitor/cli init "VoltaLa" "com.voltala.app" --web-dir dist || true
-          npx cap add android
+          npx --yes @capacitor/cli add android
+        fi
 
-      - name: Sync Capacitor
-        run: |
-          npx cap sync android
-          # Garantir permissão de internet, geolocalização e tráfego em texto claro
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-          if [ -f "$MANIFEST" ]; then
-            if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
-              sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.INTERNET" />' "$MANIFEST"
-            fi
-            if ! grep -q "ACCESS_FINE_LOCATION" "$MANIFEST"; then
-              sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />' "$MANIFEST"
-            fi
-            sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$MANIFEST"
+        # Injeta permissões de GPS e Internet no AndroidManifest de forma robusta
+        MANIFEST="android/app/src/main/AndroidManifest.xml"
+        if [ -f "$MANIFEST" ]; then
+          # Remove se já existir para não duplicar, depois adiciona
+          sed -i '/android.permission.ACCESS_FINE_LOCATION/d' "$MANIFEST"
+          sed -i '/android.permission.ACCESS_COARSE_LOCATION/d' "$MANIFEST"
+          sed -i '/android.permission.INTERNET/d' "$MANIFEST"
+
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />' "$MANIFEST"
+        fi
+
+        # Auto-incrementa versionCode para permitir instalar a atualização por cima sem desinstalar
+        GRADLE_FILE="android/app/build.gradle"
+        if [ -f "$GRADLE_FILE" ]; then
+          BUILD_NUM=${{ github.run_number }}
+          if [ -z "$BUILD_NUM" ] || [ "$BUILD_NUM" -eq 0 ]; then
+            BUILD_NUM=$(date +%s)
           fi
+          sed -i "s/versionCode 1/versionCode $BUILD_NUM/g" "$GRADLE_FILE"
+          sed -i "s/versionName \"1.0\"/versionName \"1.0.$BUILD_NUM\"/g" "$GRADLE_FILE"
+        fi
 
-      - name: Fix Kotlin stdlib conflict
-        run: echo 'allprojects { configurations.all { resolutionStrategy.eachDependency { if (requested.group == "org.jetbrains.kotlin") { useVersion("1.9.24") } } } }' >> android/build.gradle
+        # Gera ícones com Safe Zone do Android
+        node scripts/generate-android-icons.cjs
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
+        # Sincroniza os assets para o Android
+        npx --yes @capacitor/cli sync android
 
-      - name: Decode debug keystore
-        run: |
-          if [ -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
-            echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | tr -d '[:space:]' | base64 -d > android/app/debug.keystore
-            echo "Tamanho do arquivo decodificado:"
-            ls -la android/app/debug.keystore
-          else
-            echo "DEBUG_KEYSTORE_BASE64 não definido - usando keystore padrão"
-          fi
+    - name: Decodificar Keystore Fixa a partir do Segredo
+      run: |
+        echo "Tamanho do segredo (deve ser próximo de 3664):"
+        echo -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | wc -c
+        if [ -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | tr -d '[:space:]' | base64 -d > release.keystore
+          echo "✅ release.keystore decodificado a partir do segredo DEBUG_KEYSTORE_BASE64"
+          ls -la release.keystore
+        else
+          echo "⚠️ Segredo DEBUG_KEYSTORE_BASE64 não encontrado — build vai usar assinatura aleatória"
+        fi
 
-      - name: Forçar signingConfig do App para Usar o Keystore Fixo
-        run: |
-          if [ -f "android/app/debug.keystore" ]; then
-            cat >> android/app/build.gradle << 'EOF'
+    - name: Configurar Keystore Fixo para Assinatura Consistente
+      run: |
+        mkdir -p ~/.android
+        if [ -f "release.keystore" ]; then
+          cp release.keystore ~/.android/debug.keystore
+          echo "✅ Keystore fixo configurado em ~/.android/debug.keystore (garante mesma assinatura em todos os builds)"
+        fi
 
-          android.signingConfigs.debug.storeFile = new File("${project.projectDir}/debug.keystore")
-          android.signingConfigs.debug.storePassword = "android"
-          android.signingConfigs.debug.keyAlias = "androiddebugkey"
-          android.signingConfigs.debug.keyPassword = "android"
-          android.buildTypes.debug.signingConfig = android.signingConfigs.debug
-          EOF
-            echo "signingConfig do buildType debug forçado a usar android/app/debug.keystore"
-          fi
+    - name: Forçar signingConfig do App para Usar o Keystore Fixo
+      run: |
+        if grep -q "android.signingConfigs.debug.storeFile" android/app/build.gradle; then
+          echo "ℹ️ signingConfig já estava forçado — nada a fazer"
+          exit 0
+        fi
+        cat >> android/app/build.gradle << 'EOF'
 
-      - name: Build APK with Gradle
-        working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug 2>&1 | tee build.log || true
-          if grep -q "BUILD FAILED" build.log; then
-            echo "===== ERRO REAL ====="
-            grep -A 20 "What went wrong" build.log
-            exit 1
-          fi
+        android.signingConfigs.debug.storeFile = new File(System.getProperty("user.home") + "/.android/debug.keystore")
+        android.signingConfigs.debug.storePassword = "android"
+        android.signingConfigs.debug.keyAlias = "androiddebugkey"
+        android.signingConfigs.debug.keyPassword = "android"
+        android.buildTypes.debug.signingConfig = android.signingConfigs.debug
+        EOF
+        echo "✅ signingConfig do buildType debug forçado a usar ~/.android/debug.keystore"
 
-      - name: Verificar Fingerprint da Assinatura do APK
-        continue-on-error: true
-        run: |
-          SDK=${ANDROID_HOME:-/usr/local/lib/android/sdk}
-          APK=android/app/build/outputs/apk/debug/app-debug.apk
-          APKSIGNER=$(ls $SDK/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
-          echo "=== Fingerprint da assinatura deste APK (compare entre builds) ==="
-          if [ -z "$APKSIGNER" ] || [ ! -f "$APK" ]; then
-            echo "apksigner ou APK nao encontrado - pulando verificacao"
-            exit 0
-          fi
-          "$APKSIGNER" verify --print-certs "$APK" | grep -i "SHA-256\|SHA-1"
+    - name: Compilar APK
+      run: |
+        cd android
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+    - name: Verificar Fingerprint da Assinatura do APK
+      continue-on-error: true
+      run: |
+        SDK=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+        APK=android/app/build/outputs/apk/debug/app-debug.apk
+        APKSIGNER=$(ls $SDK/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+        echo "=== Fingerprint da assinatura deste APK (compare entre builds) ==="
+        if [ -z "$APKSIGNER" ]; then
+          echo "apksigner nao encontrado - pulando verificacao"
+          exit 0
+        fi
+        "$APKSIGNER" verify --print-certs "$APK" | grep -i "SHA-256\|SHA-1"
+
+    - name: Upload Finished APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug
+        path: android/app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 7
