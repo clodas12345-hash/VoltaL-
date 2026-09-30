@@ -37,59 +37,9 @@ jobs:
         # Inicializa o capacitor de forma não-interativa
         npx --yes @capacitor/cli init "VoltaLa" "com.voltala.app" --web-dir dist || true
 
-        # Garante a criação da estrutura completa do Android se o Manifest não existir
-        if [ ! -f "android/app/src/main/AndroidManifest.xml" ]; then
-          rm -rf android
-          npx --yes @capacitor/cli add android
-        fi
-
-        # Injeta permissões no AndroidManifest
-        MANIFEST="android/app/src/main/AndroidManifest.xml"
-        if [ -f "$MANIFEST" ]; then
-          sed -i '/android.permission.ACCESS_FINE_LOCATION/d' "$MANIFEST"
-          sed -i '/android.permission.ACCESS_COARSE_LOCATION/d' "$MANIFEST"
-          sed -i '/android.permission.ACCESS_BACKGROUND_LOCATION/d' "$MANIFEST"
-          sed -i '/android.permission.INTERNET/d' "$MANIFEST"
-          sed -i '/android.permission.ACCESS_NETWORK_STATE/d' "$MANIFEST"
-          sed -i '/android.permission.CAMERA/d' "$MANIFEST"
-          sed -i '/android.permission.READ_EXTERNAL_STORAGE/d' "$MANIFEST"
-          sed -i '/android.permission.WRITE_EXTERNAL_STORAGE/d' "$MANIFEST"
-          sed -i '/android.permission.READ_MEDIA_IMAGES/d' "$MANIFEST"
-          sed -i '/android.permission.POST_NOTIFICATIONS/d' "$MANIFEST"
-          sed -i '/android.permission.VIBRATE/d' "$MANIFEST"
-          sed -i '/android.permission.WAKE_LOCK/d' "$MANIFEST"
-          sed -i '/android.permission.RECEIVE_BOOT_COMPLETED/d' "$MANIFEST"
-          sed -i '/android.permission.FOREGROUND_SERVICE/d' "$MANIFEST"
-          sed -i '/android.permission.FOREGROUND_SERVICE_LOCATION/d' "$MANIFEST"
-
-          sed -i '/<application/i \
-              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\
-              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\
-              <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />\
-              <uses-permission android:name="android.permission.INTERNET" />\
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\
-              <uses-permission android:name="android.permission.CAMERA" />\
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\
-              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\
-              <uses-permission android:name="android.permission.VIBRATE" />\
-              <uses-permission android:name="android.permission.WAKE_LOCK" />\
-              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />' "$MANIFEST"
-        fi
-
-        # Auto-incrementa versionCode para permitir instalar a atualização por cima sem desinstalar
-        GRADLE_FILE="android/app/build.gradle"
-        if [ -f "$GRADLE_FILE" ]; then
-          BUILD_NUM=${{ github.run_number }}
-          if [ -z "$BUILD_NUM" ] || [ "$BUILD_NUM" -eq 0 ]; then
-            BUILD_NUM=$(date +%s)
-          fi
-          sed -i "s/versionCode 1/versionCode $BUILD_NUM/g" "$GRADLE_FILE"
-          sed -i "s/versionName \"1.0\"/versionName \"1.0.$BUILD_NUM\"/g" "$GRADLE_FILE"
-        fi
+        # Executa o script de patch robusto para AndroidManifest e Gradle
+        chmod +x scripts/patch-android.sh
+        bash scripts/patch-android.sh
 
         # Suporte opcional a Keystore persistente (DEBUG_KEYSTORE_BASE64 ou KEYSTORE_BASE64) para garantir mesma assinatura em atualizações
         if [ -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
