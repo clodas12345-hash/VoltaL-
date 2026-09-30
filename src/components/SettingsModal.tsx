@@ -84,18 +84,16 @@ export function SettingsModal({
         }
       }
 
-      // 2. Fallback padrão: Download para a pasta Downloads
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
+      // 2. Fallback robusto para APK (Android WebView) e navegadores usando Data URI
+      const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonString);
       const link = document.createElement('a');
-      link.href = url;
+      link.href = dataUri;
       link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      setImportStatus({ type: 'success', message: 'Arquivo salvo na pasta Downloads com sucesso!' });
+
+      setImportStatus({ type: 'success', message: 'Backup gerado e enviado para download com sucesso!' });
     } catch (e: any) {
       setImportStatus({ type: 'error', message: `Erro ao exportar: ${e.message}` });
     }
