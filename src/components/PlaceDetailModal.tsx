@@ -343,7 +343,7 @@ export function PlaceDetailModal({
             className="absolute inset-0 block cursor-pointer z-0 flex items-center justify-center bg-slate-200"
           >
             {(() => {
-              const displayPhoto = getPlacePhoto(place.name, place.photoUrl);
+              const displayPhoto = getPlacePhoto(place.name, place.photoUrl, { lat: place.lat, lng: place.lng });
               return (
                 <PhotoWithFallback 
                   name={place.name} 

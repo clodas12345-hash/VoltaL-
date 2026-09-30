@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { X, HelpCircle, ListFilter, Plus, Trash2, Settings as SettingsIcon, Download, Upload, AlertTriangle } from 'lucide-react';
+import { X, HelpCircle, ListFilter, Plus, Trash2, Settings as SettingsIcon, Download, Upload, AlertTriangle, Share2 } from 'lucide-react';
 import { PlaceCategory } from '../types';
+import { getPhotoCacheStats, clearPhotoCache } from '../utils/photoCache';
+import { Image as ImageIcon, CheckCircle2 } from 'lucide-react';
 import { ICON_BASE64 } from '../iconBase64';
 
 interface SettingsModalProps {
@@ -25,9 +27,25 @@ export function SettingsModal({
   const [activeTab, setActiveTab] = useState<'categories' | 'backup' | 'help'>('categories');
   const [newCat, setNewCat] = useState('');
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [cacheStats, setCacheStats] = useState<{ count: number; estimatedSizeKb: number }>({ count: 0, estimatedSizeKb: 0 });
+  const [cacheClearedMsg, setCacheClearedMsg] = useState(false);
+
+  React.useEffect(() => {
+    if (activeTab === 'backup') {
+      getPhotoCacheStats().then(setCacheStats);
+    }
+  }, [activeTab]);
+
+  const handleClearPhotoCache = async () => {
+    await clearPhotoCache();
+    const stats = await getPhotoCacheStats();
+    setCacheStats(stats);
+    setCacheClearedMsg(true);
+    setTimeout(() => setCacheClearedMsg(false), 3000);
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     try {
       const data = {
         categories,
@@ -37,25 +55,92 @@ export function SettingsModal({
         exportedAt: new Date().toISOString()
       };
       
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const jsonString = JSON.stringify(data, null, 2);
       const now = new Date();
       const day = String(now.getDate()).padStart(2, '0');
       const month = String(now.getMonth() + 1).padStart(2, '0');
       const year = now.getFullYear();
-      const dateStr = `${day}-${month}-${year}`;
-      
+      const fileName = `Backup_VoltaLa_${day}-${month}-${year}.json`;
+
+      // 1. Tentar File System Access API (permite escolher a pasta de destino no navegador/PC)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: fileName,
+            types: [{
+              description: 'Arquivo JSON de Backup VoltaLá',
+              accept: { 'application/json': ['.json'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(jsonString);
+          await writable.close();
+          setImportStatus({ type: 'success', message: 'Backup salvo na pasta escolhida com sucesso!' });
+          return;
+        } catch (pickerErr: any) {
+          if (pickerErr.name === 'AbortError') {
+            return;
+          }
+        }
+      }
+
+      // 2. Fallback padrão: Download para a pasta Downloads
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
       link.href = url;
-      link.download = `Backup_VoltaLa_${dateStr}.json`;
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
-      setImportStatus({ type: 'success', message: 'Arquivo de backup gerado com sucesso!' });
+      setImportStatus({ type: 'success', message: 'Arquivo salvo na pasta Downloads com sucesso!' });
     } catch (e: any) {
       setImportStatus({ type: 'error', message: `Erro ao exportar: ${e.message}` });
+    }
+  };
+
+
+  const handleShare = async () => {
+    try {
+      const data = {
+        categories,
+        savedPlaces,
+        radarConfig,
+        version: '1.0',
+        exportedAt: new Date().toISOString()
+      };
+      
+      const jsonString = JSON.stringify(data, null, 2);
+      const now = new Date();
+      const day = String(now.getDate()).padStart(2, '0');
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const year = now.getFullYear();
+      const fileName = `Backup_VoltaLa_${day}-${month}-${year}.json`;
+      
+      const file = new File([jsonString], fileName, { type: 'application/json' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Backup VoltaLá',
+          text: `Backup dos locais salvos no VoltaLá (${savedPlaces.length} locais)`
+        });
+        setImportStatus({ type: 'success', message: 'Backup compartilhado com sucesso!' });
+      } else if (navigator.share) {
+        await navigator.share({
+          title: 'Backup VoltaLá',
+          text: jsonString
+        });
+        setImportStatus({ type: 'success', message: 'Backup compartilhado com sucesso!' });
+      } else {
+        await handleExport();
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        setImportStatus({ type: 'error', message: `Erro ao compartilhar: ${e.message}` });
+      }
     }
   };
 
@@ -211,25 +296,35 @@ export function SettingsModal({
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-3 mt-4">
+                <div className="grid grid-cols-3 gap-2 mt-4">
                   <button 
                     onClick={handleExport}
-                    className="flex flex-col items-center justify-center gap-2 bg-white border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50/30 p-4 rounded-2xl transition-all cursor-pointer group"
+                    className="flex flex-col items-center justify-center gap-2 bg-white border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50/30 p-3 rounded-2xl transition-all cursor-pointer group"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Download className="w-5 h-5" />
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Download className="w-4 h-4" />
                     </div>
-                    <span className="text-xs font-bold text-slate-700">Exportar .JSON</span>
+                    <span className="text-[11px] font-bold text-slate-700 text-center leading-tight">Baixar .JSON</span>
+                  </button>
+
+                  <button 
+                    onClick={handleShare}
+                    className="flex flex-col items-center justify-center gap-2 bg-white border-2 border-slate-100 hover:border-emerald-500 hover:bg-emerald-50/30 p-3 rounded-2xl transition-all cursor-pointer group"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Share2 className="w-4 h-4" />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-700 text-center leading-tight">Enviar / Salvar</span>
                   </button>
                   
                   <button 
                     onClick={handleImportClick}
-                    className="flex flex-col items-center justify-center gap-2 bg-white border-2 border-slate-100 hover:border-slate-800 hover:bg-slate-50 p-4 rounded-2xl transition-all cursor-pointer group"
+                    className="flex flex-col items-center justify-center gap-2 bg-white border-2 border-slate-100 hover:border-slate-800 hover:bg-slate-50 p-3 rounded-2xl transition-all cursor-pointer group"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Upload className="w-5 h-5" />
+                    <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Upload className="w-4 h-4" />
                     </div>
-                    <span className="text-xs font-bold text-slate-700">Importar .JSON</span>
+                    <span className="text-[11px] font-bold text-slate-700 text-center leading-tight">Importar</span>
                     <input 
                       type="file"
                       ref={fileInputRef}
@@ -258,6 +353,43 @@ export function SettingsModal({
                   <p className="text-[10px] text-amber-800 leading-relaxed font-medium">
                     A importação de um novo arquivo <b>substituirá permanentemente</b> todos os seus locais salvos, categorias e configurações atuais.
                   </p>
+                </div>
+              </div>
+
+              {/* Persistent IndexedDB Photo Cache Management */}
+              <div className="bg-emerald-50/70 border border-emerald-200/80 p-4 rounded-2xl">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                      <ImageIcon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-emerald-950">Cache Local de Fotos (IndexedDB)</h4>
+                      <p className="text-[10px] text-emerald-800 font-medium">Economia de dados & carregamento instantâneo</p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-black bg-emerald-200/70 text-emerald-900 px-2 py-0.5 rounded-full">
+                    {cacheStats.count} fotos (~{cacheStats.estimatedSizeKb} KB)
+                  </span>
+                </div>
+                <p className="text-[10px] text-emerald-800/90 leading-relaxed mb-3">
+                  As fotos do Google Places e Street View ficam salvas de forma persistente no seu aparelho. Isso evita novas cobranças e chamadas repetidas na API do Google e permite visualização offline.
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={handleClearPhotoCache}
+                    className="text-xs font-bold bg-white text-emerald-800 hover:bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-xl transition-colors cursor-pointer shadow-2xs flex items-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Limpar Cache de Fotos</span>
+                  </button>
+                  {cacheClearedMsg && (
+                    <span className="text-xs font-bold text-emerald-700 flex items-center gap-1 animate-in fade-in">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Cache limpo!
+                    </span>
+                  )}
                 </div>
               </div>
 

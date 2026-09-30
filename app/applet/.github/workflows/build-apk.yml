@@ -2,13 +2,12 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout Source Code
       uses: actions/checkout@v4
@@ -37,17 +36,16 @@ jobs:
       run: |
         # Inicializa o capacitor de forma não-interativa
         npx --yes @capacitor/cli init "VoltaLa" "com.voltala.app" --web-dir dist || true
-        
+
         # Garante a criação da estrutura completa do Android se o Manifest não existir
         if [ ! -f "android/app/src/main/AndroidManifest.xml" ]; then
           rm -rf android
           npx --yes @capacitor/cli add android
         fi
-        
-        # Injeta todas as permissões de GPS, Câmera, Armazenamento, Notificações e Serviços no AndroidManifest
+
+        # Injeta permissões no AndroidManifest
         MANIFEST="android/app/src/main/AndroidManifest.xml"
         if [ -f "$MANIFEST" ]; then
-          # Remove se já existirem para não duplicar
           sed -i '/android.permission.ACCESS_FINE_LOCATION/d' "$MANIFEST"
           sed -i '/android.permission.ACCESS_COARSE_LOCATION/d' "$MANIFEST"
           sed -i '/android.permission.ACCESS_BACKGROUND_LOCATION/d' "$MANIFEST"
@@ -63,25 +61,25 @@ jobs:
           sed -i '/android.permission.RECEIVE_BOOT_COMPLETED/d' "$MANIFEST"
           sed -i '/android.permission.FOREGROUND_SERVICE/d' "$MANIFEST"
           sed -i '/android.permission.FOREGROUND_SERVICE_LOCATION/d' "$MANIFEST"
-                    
+
           sed -i '/<application/i \
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />' "$MANIFEST"
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\
+              <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />\
+              <uses-permission android:name="android.permission.INTERNET" />\
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\
+              <uses-permission android:name="android.permission.CAMERA" />\
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\
+              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\
+              <uses-permission android:name="android.permission.VIBRATE" />\
+              <uses-permission android:name="android.permission.WAKE_LOCK" />\
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />' "$MANIFEST"
         fi
-        
+
         # Auto-incrementa versionCode para permitir instalar a atualização por cima sem desinstalar
         GRADLE_FILE="android/app/build.gradle"
         if [ -f "$GRADLE_FILE" ]; then
@@ -92,13 +90,22 @@ jobs:
           sed -i "s/versionCode 1/versionCode $BUILD_NUM/g" "$GRADLE_FILE"
           sed -i "s/versionName \"1.0\"/versionName \"1.0.$BUILD_NUM\"/g" "$GRADLE_FILE"
         fi
-        
+
+        # Suporte opcional a Keystore persistente (DEBUG_KEYSTORE_BASE64 ou KEYSTORE_BASE64) para garantir mesma assinatura em atualizações
+        if [ -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | tr -d '[:space:]' | base64 -d > android/app/debug.keystore
+          echo "✅ debug.keystore persistente aplicado para assinatura contínua"
+        elif [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '[:space:]' | base64 -d > android/app/release.keystore
+          echo "✅ release.keystore persistente aplicado"
+        fi
+
         # Gera ícones com Safe Zone do Android
         node scripts/generate-android-icons.cjs
-        
+
         # Sincroniza os assets para o Android
         npx --yes @capacitor/cli sync android
-        
+
         # Compila o APK Debug
         cd android
         chmod +x gradlew

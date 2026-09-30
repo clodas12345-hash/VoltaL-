@@ -6,6 +6,7 @@ import { ApiKeySplash } from './ApiKeySplash';
 import { DemoMap } from './DemoMap';
 import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, getZoomForRadius } from '../types';
 import { getPlacePhoto } from '../utils/photoUtils';
+import { useCachedPhoto } from '../utils/photoCache';
 import { Star, MapPin as PinIcon, Navigation, Bookmark, ExternalLink, X, Volume2, VolumeX, CornerUpLeft, CornerUpRight, ArrowUp, Compass, LocateFixed, Plus, Minus, Radio, RefreshCw, List, RotateCcw, RotateCw } from 'lucide-react';
 import { getDefaultOpeningHoursForCategory } from '../utils/openingHours';
 
@@ -105,96 +106,153 @@ const getManeuverIcon = (maneuver?: string, instructions?: string) => {
   return <ArrowUp className="w-6 h-6 text-white" />;
 };
 
-const ThinPin = ({ color, isSaved, title, photoUrl, coords }: { color?: string; isSaved?: boolean; title?: string; photoUrl?: string; coords?: { lat: number, lng: number } }) => {
-  const pinColor = color || '#2563eb';
-  const displayPhoto = getPlacePhoto(title, photoUrl, coords);
+// Helper function to disperse overlapping markers slightly so every pin is distinct and clickable
+const getOffsetForPlace = (lat: number, lng: number, allPlaces: Array<{ lat: number; lng: number }>, index: number) => {
+  const cluster = allPlaces.filter((p) => Math.abs(p.lat - lat) < 0.00025 && Math.abs(p.lng - lng) < 0.00025);
+  if (cluster.length <= 1) return { lat, lng };
+  
+  const clusterIndex = cluster.findIndex(p => Math.abs(p.lat - lat) < 0.00003 && Math.abs(p.lng - lng) < 0.00003);
+  const activeIdx = clusterIndex >= 0 ? clusterIndex : index % cluster.length;
+  
+  const angle = (activeIdx / cluster.length) * 2 * Math.PI;
+  const radiusOffset = 0.00024; // ~24 meters
+  return {
+    lat: lat + Math.sin(angle) * radiusOffset,
+    lng: lng + Math.cos(angle) * (radiusOffset * 1.1),
+  };
+};
+
+const getCategorySvgIcon = (category?: string, title?: string, isSaved?: boolean) => {
+  if (isSaved) {
+    return <path d="M17 9.5L18.8 13.2L23 13.8L20 16.7L20.7 20.8L17 18.8L13.3 20.8L14 16.7L11 13.8L15.2 13.2L17 9.5Z" fill="#ffffff" />;
+  }
+
+  const cat = (category || "").toLowerCase();
+  const name = (title || "").toLowerCase();
+
+  // Padaria / Bakery
+  if (cat.includes("padaria") || name.includes("padaria") || name.includes("pao") || name.includes("confeitaria") || name.includes("panificadora")) {
+    return (
+      <g fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" transform="translate(8.5, 7.5) scale(0.72)">
+        <path d="M2 12a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z" fill="#ffffff" fillOpacity="0.25"/>
+        <path d="M7 8l2 6M12 8l1 6M17 8l-1 6"/>
+      </g>
+    );
+  }
+
+  // Restaurante / Food
+  if (cat.includes("restaurante") || name.includes("restaurante") || name.includes("bar ") || name.includes("grill") || name.includes("sushi") || name.includes("pizz")) {
+    return (
+      <g fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" transform="translate(8.5, 7.5) scale(0.72)">
+        <path d="M18 2v6a3 3 0 0 1-3 3 3 3 0 0 1-3-3V2M15 2v18M6 2v8a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V2M8 12v8" />
+      </g>
+    );
+  }
+
+  // Cafeteria / Coffee
+  if (cat.includes("cafe") || name.includes("cafe") || name.includes("espresso") || name.includes("starbucks")) {
+    return (
+      <g fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" transform="translate(8.5, 7.5) scale(0.72)">
+        <path d="M18 8h1a4 4 0 0 1 0 8h-1M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8zM6 1v3M10 1v3M14 1v3" />
+      </g>
+    );
+  }
+
+  // Farmacia / Drogaria
+  if (cat.includes("farmacia") || name.includes("farmacia") || name.includes("drogaria") || name.includes("saude") || name.includes("remedio")) {
+    return (
+      <g fill="#ffffff" transform="translate(10.5, 9.5) scale(0.55)">
+        <path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7V2z" />
+      </g>
+    );
+  }
+
+  // Supermercado / Shopping
+  if (cat.includes("mercado") || cat.includes("shopping") || name.includes("mercado") || name.includes("supermercado") || name.includes("shopping")) {
+    return (
+      <g fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" transform="translate(8.5, 7.5) scale(0.72)">
+        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0" />
+      </g>
+    );
+  }
+
+  // Automotivo / Oficina
+  if (cat.includes("auto") || name.includes("auto") || name.includes("posto") || name.includes("mecanic") || name.includes("pneu")) {
+    return (
+      <g fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" transform="translate(8.5, 7.5) scale(0.72)">
+        <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2" />
+        <circle cx="7" cy="17" r="2" />
+        <circle cx="17" cy="17" r="2" />
+      </g>
+    );
+  }
+
+  // Default Pin Point icon
+  return (
+    <g fill="#ffffff" transform="translate(10.5, 9.5) scale(0.55)">
+      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+    </g>
+  );
+};
+
+const ThinPin = ({ color, isSaved, title, photoUrl, coords, category }: { color?: string; isSaved?: boolean; title?: string; photoUrl?: string; coords?: { lat: number, lng: number }; category?: string }) => {
+  const pinColor = isSaved ? '#f59e0b' : (color || '#2563eb');
+  const rawPhoto = getPlacePhoto(title, photoUrl, coords);
+  const { src: cachedPhoto } = useCachedPhoto(rawPhoto);
+  const [imgError, setImgError] = useState(false);
+  const displayPhoto = (!imgError && cachedPhoto) ? cachedPhoto : undefined;
+  
   return (
     <div 
-      className="relative group cursor-pointer transform hover:scale-120 active:scale-95 transition-transform origin-bottom flex flex-col items-center select-none" 
-      style={{ filter: 'drop-shadow(0px 6px 10px rgba(0,0,0,0.38))' }}
+      className="relative group cursor-pointer transform hover:scale-125 active:scale-95 transition-transform origin-bottom flex flex-col items-center select-none" 
+      style={{ filter: 'drop-shadow(0px 6px 12px rgba(0,0,0,0.42))' }}
     >
+      {/* Crisp Hover / Tap Tooltip Badge with full name */}
       {title && (
-        <div className="absolute -top-8 px-2.5 py-1 bg-slate-900/95 text-white rounded-lg text-[11px] font-bold shadow-xl border border-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-40 flex items-center gap-1.5 backdrop-blur-xs">
+        <div className="absolute -top-9 px-2.5 py-1 bg-slate-900/95 text-white rounded-lg text-xs font-bold shadow-xl border border-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 flex items-center gap-1.5 backdrop-blur-xs">
           {isSaved && <Star className="w-3 h-3 fill-amber-400 text-amber-400" />}
           <span>{title}</span>
         </div>
       )}
 
       <div className="relative flex flex-col items-center">
-        <svg width="34" height="46" viewBox="0 0 34 46" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="pinNeedleGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#94a3b8" />
-              <stop offset="50%" stopColor="#ffffff" />
-              <stop offset="100%" stopColor="#64748b" />
-            </linearGradient>
-            <linearGradient id={isSaved ? "bluePinHead" : "bluePinHeadStd"} x1="0" y1="0" x2="1" y2="1">
-              {isSaved ? (
-                <>
-                  <stop offset="0%" stopColor="#60a5fa" />
-                  <stop offset="40%" stopColor="#2563eb" />
-                  <stop offset="100%" stopColor="#1d4ed8" />
-                </>
-              ) : (
-                <>
-                  <stop offset="0%" stopColor="#38bdf8" />
-                  <stop offset="35%" stopColor="#2563eb" />
-                  <stop offset="100%" stopColor="#1e40af" />
-                </>
-              )}
-            </linearGradient>
-          </defs>
-          {/* Ground Shadow ellipse */}
-          <ellipse cx="17" cy="44" rx="5" ry="2" fill="rgba(0,0,0,0.4)" />
-          {/* Metallic needle stem */}
-          <path d="M17 44L17 22" stroke="url(#pinNeedleGrad)" strokeWidth="2.5" strokeLinecap="round"/>
-          
-          {/* Pin Head - Circular with photo */}
-          <circle cx="17" cy="16" r="16" fill="white" stroke={isSaved ? "#f59e0b" : "#2563eb"} strokeWidth="2.5"/>
-          
-          {displayPhoto ? (
-            <foreignObject x="3" y="2" width="28" height="28" clipPath="circle(14px at 14px 14px)">
-              <div className="w-full h-full bg-slate-200 flex items-center justify-center overflow-hidden">
-                <img 
-                  src={displayPhoto} 
-                  alt={title || 'local'} 
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    const img = e.target as HTMLImageElement;
-                    img.style.display = 'none';
-                    const parent = img.parentElement;
-                    if (parent) {
-                      parent.classList.add('bg-blue-600');
-                      parent.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center text-white p-0.5">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="w-3.5 h-3.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path></svg>
-                        <span class="text-[6px] font-black uppercase truncate w-full text-center">${title?.substring(0, 6) || ''}</span>
-                      </div>`;
-                    }
-                  }}
-                />
+        {/* Needle Stem & Shadow Structure */}
+        <div className="relative w-10 h-13 flex flex-col items-center">
+          {/* Photo or Category Circle Head */}
+          <div 
+            className="w-10 h-10 rounded-full border-[2.5px] bg-white flex items-center justify-center overflow-hidden shadow-md relative z-10"
+            style={{ borderColor: pinColor }}
+          >
+            {displayPhoto ? (
+              <img 
+                src={displayPhoto} 
+                alt={title || ""} 
+                className="w-full h-full object-cover rounded-full"
+                onError={() => setImgError(true)}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div 
+                className="w-full h-full flex items-center justify-center text-white"
+                style={{ backgroundColor: pinColor }}
+              >
+                <svg width="22" height="22" viewBox="0 0 34 46" fill="none" className="w-5 h-5">
+                  {getCategorySvgIcon(category, title, isSaved)}
+                </svg>
               </div>
-            </foreignObject>
-          ) : (
-            <>
-              <circle cx="17" cy="16" r="13" fill={isSaved ? "#f59e0b" : "#2563eb"} />
-              {isSaved ? (
-                <path 
-                  d="M17 9L18.8 12.8L23 13.4L20 16.3L20.7 20.4L17 18.4L13.3 20.4L14 16.3L11 13.4L15.2 12.8L17 9Z" 
-                  fill="#ffffff" 
-                />
-              ) : (
-                <circle cx="17" cy="16" r="4" fill="#ffffff" />
-              )}
-            </>
-          )}
-          
-          {/* Glossy Reflection Highlight */}
-          <ellipse cx="11" cy="9" rx="4" ry="2.5" transform="rotate(-30 11 9)" fill="rgba(255,255,255,0.4)" />
-        </svg>
+            )}
+          </div>
 
+          {/* Stem needle */}
+          <div className="w-1 h-3 -mt-0.5 bg-gradient-to-b from-slate-300 via-slate-500 to-slate-700 rounded-b shadow-sm z-0" />
+          {/* Ground Contact Shadow */}
+          <div className="w-3.5 h-1 bg-black/40 rounded-full blur-[0.5px] -mt-0.5" />
+        </div>
+
+        {/* Saved Star Badge */}
         {isSaved && (
-          <div className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-amber-400 rounded-full border-1.5 border-white flex items-center justify-center shadow-md">
+          <div className="absolute -top-1 -right-1 w-4.5 h-4.5 bg-amber-400 rounded-full border-1.5 border-white flex items-center justify-center shadow-md z-20">
             <Star className="w-2.5 h-2.5 fill-slate-900 text-slate-900" />
           </div>
         )}
@@ -1072,10 +1130,15 @@ function InnerMapController({
           let photoUrl = undefined;
           try {
             if (p.photos && p.photos.length > 0) {
-              photoUrl = p.photos[0].getURI({ maxWidth: 400 });
+              const ph = p.photos[0] as any;
+              if (typeof ph.getURI === "function") {
+                photoUrl = ph.getURI({ maxWidth: 600, maxHeight: 400 });
+              } else if (typeof ph.getUrl === "function") {
+                photoUrl = ph.getUrl({ maxWidth: 600, maxHeight: 400 });
+              }
             }
           } catch (e) {
-            console.error('Error fetching photo URI', e);
+            console.error("Error fetching photo URI", e);
           }
 
           // Map price level to Brazilian Real estimates
@@ -1240,8 +1303,7 @@ function InnerMapController({
           scaleControl: false,
           mapTypeControl: false,
           fullscreenControl: false,
-          streetViewControl: !navigationTarget,
-          streetViewControlOptions: { position: 8 },
+          streetViewControl: false,
           renderingType: "VECTOR"
         } as any}
         internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
@@ -1257,6 +1319,22 @@ function InnerMapController({
         styles={[
           {
             featureType: "poi.business",
+            stylers: [{ visibility: "off" }]
+          },
+          {
+            featureType: "poi.attraction",
+            stylers: [{ visibility: "off" }]
+          },
+          {
+            featureType: "poi.medical",
+            stylers: [{ visibility: "off" }]
+          },
+          {
+            featureType: "poi.place_of_worship",
+            stylers: [{ visibility: "off" }]
+          },
+          {
+            featureType: "poi.sports_complex",
             stylers: [{ visibility: "off" }]
           }
         ]}
@@ -1304,7 +1382,12 @@ function InnerMapController({
                   let photoUrl = undefined;
                   try {
                     if (place.photos && place.photos.length > 0) {
-                      photoUrl = place.photos[0].getURI({ maxWidth: 400 });
+                      const ph = place.photos[0] as any;
+                      if (typeof ph.getURI === "function") {
+                        photoUrl = ph.getURI({ maxWidth: 600, maxHeight: 400 });
+                      } else if (typeof ph.getUrl === "function") {
+                        photoUrl = ph.getUrl({ maxWidth: 600, maxHeight: 400 });
+                      }
                     }
                   } catch (err) {}
 
@@ -1440,59 +1523,67 @@ function InnerMapController({
         )}
 
         {/* Saved Favorite Places Markers */}
-        {visibleSavedPlaces.map((place) => {
-          const color = CATEGORY_COLORS[place.category] || '#3b82f6';
+        {visibleSavedPlaces.map((place, idx) => {
+          const color = CATEGORY_COLORS[place.category] || '#f59e0b';
+          const pos = getOffsetForPlace(place.lat, place.lng, visibleSavedPlaces, idx);
           return (
             <AdvancedMarker
               key={`saved-${place.id}`}
-              position={{ lat: place.lat, lng: place.lng }}
+              position={pos}
               title={place.name}
+              zIndex={150}
               onClick={() => {
                 onSelectPlaceToView(place);
               }}
             >
               <ThinPin 
-              color={color} 
-              isSaved={true} 
-              title={place.name} 
-              photoUrl={place.photoUrl} 
-              coords={{ lat: place.lat, lng: place.lng }}
-            />
+                color={color} 
+                isSaved={true} 
+                title={place.name} 
+                category={place.category}
+                photoUrl={place.photoUrl} 
+                coords={{ lat: place.lat, lng: place.lng }}
+              />
             </AdvancedMarker>
           );
         })}
 
         {/* Search Result Markers */}
-        {searchResults.map((pin) => {
+        {searchResults.map((pin, idx) => {
           // Check if already saved
           const isAlreadySaved = savedPlaces.some((s) => (s.placeId && pin.placeId && s.placeId === pin.placeId) || (Math.abs(s.lat - pin.lat) < 0.0001 && Math.abs(s.lng - pin.lng) < 0.0001));
+          const pinCategory = pin.category || selectedCategoryFilter;
+          const color = CATEGORY_COLORS[pinCategory as string] || '#2563eb';
+          const pos = getOffsetForPlace(pin.lat, pin.lng, searchResults, idx);
           return (
             <AdvancedMarker
               key={`search-${pin.id}`}
-              position={{ lat: pin.lat, lng: pin.lng }}
+              position={pos}
               title={pin.name}
-              zIndex={50}
+              zIndex={isAlreadySaved ? 140 : 80}
               onClick={() => {
                 onSelectPlaceToView(pin);
               }}
             >
               <ThinPin 
-              color="#2563eb" 
-              isSaved={isAlreadySaved} 
-              title={pin.name} 
-              photoUrl={pin.photoUrl} 
-              coords={{ lat: pin.lat, lng: pin.lng }}
-            />
+                color={isAlreadySaved ? '#f59e0b' : color} 
+                isSaved={isAlreadySaved} 
+                title={pin.name} 
+                category={pinCategory}
+                photoUrl={pin.photoUrl} 
+                coords={{ lat: pin.lat, lng: pin.lng }}
+              />
             </AdvancedMarker>
           );
         })}
       </Map>
       
-      {/* Current Street Name Display */}
+      {/* Current Street Name Display - elevated above bottom attribution */}
       {currentStreetName && !isStreetViewActive && userLocation && !navigationTarget && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 pointer-events-none transition-all duration-500 ease-out animate-slideUp">
-          <div className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-lg border border-slate-700/50">
-            <span className="text-white font-medium text-xs whitespace-nowrap">{currentStreetName}</span>
+        <div className="absolute bottom-16 sm:bottom-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none transition-all duration-500 ease-out max-w-[85vw]">
+          <div className="bg-slate-900/90 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-xl border border-slate-700/70 flex items-center gap-1.5">
+            <PinIcon className="w-3 h-3 text-emerald-400 shrink-0" />
+            <span className="text-white font-medium text-xs truncate max-w-[65vw]">{currentStreetName}</span>
           </div>
         </div>
       )}
@@ -1679,7 +1770,7 @@ function InnerMapController({
 
       {/* Small, discreet floating zoom, compass rose and tempo real buttons on the map */}
       {!isStreetViewActive && (
-        <div className="absolute right-3 bottom-6 sm:right-4 sm:bottom-8 z-20 flex flex-col items-end gap-1.5 sm:gap-2 pointer-events-auto">
+        <div className="absolute right-3 bottom-16 sm:right-4 sm:bottom-20 z-20 flex flex-col items-end gap-1.5 sm:gap-2 pointer-events-auto">
           {/* Floating Compass Rose (Bússola / Indicador Norte) */}
           <button
             onClick={() => {

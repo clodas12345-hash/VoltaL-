@@ -163,7 +163,7 @@ export function SavedPlacesSidebar({
                     <div className="flex items-start gap-3 min-w-0 flex-1">
                       <div className="w-12 h-12 shrink-0 rounded-xl overflow-hidden shadow-sm border border-slate-200 bg-slate-50 flex items-center justify-center">
                         {(() => {
-                          const displayPhoto = getPlacePhoto(place.name, place.photoUrl);
+                          const displayPhoto = getPlacePhoto(place.name, place.photoUrl, { lat: place.lat, lng: place.lng });
                           return (
                             <PhotoWithFallback 
                               name={place.name} 

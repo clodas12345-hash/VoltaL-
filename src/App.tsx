@@ -771,18 +771,23 @@ export default function App() {
             }
           },
           (error) => {
-            console.error('Error in watchPosition:', error);
-            if (error.code === 1) { // PERMISSION_DENIED
-              showToast('GPS Bloqueado! Vá nas Configurações do seu Celular > Aplicativos > VoltaLá > Permissões e ative o Local.');
+            // GeolocationPositionError handling (1: PERMISSION_DENIED, 2: POSITION_UNAVAILABLE, 3: TIMEOUT)
+            if (error && error.code === 1) { // PERMISSION_DENIED
+              if (isManualClick) {
+                showToast('GPS Bloqueado! Vá nas Configurações do seu Celular > Aplicativos > VoltaLá > Permissões e ative o Local.');
+              }
               setTracking(false);
             } else if (highAccuracy) {
-              // Retry with standard accuracy (Wi-Fi/Cell)
+              // Fallback to standard accuracy without logging fatal errors
               startWatching(false);
-            } else if (isManualClick) {
-              showToast('Não foi possível obter sua localização real. Verifique as permissões de GPS.');
+            } else {
+              // Non-blocking background signal noise - preserve last valid coordinates
+              if (isManualClick) {
+                showToast('Aguardando sinal de GPS mais preciso...');
+              }
             }
           },
-          { enableHighAccuracy: highAccuracy, timeout: 6000, maximumAge: 0 }
+          { enableHighAccuracy: highAccuracy, timeout: highAccuracy ? 10000 : 20000, maximumAge: 5000 }
         );
       };
 

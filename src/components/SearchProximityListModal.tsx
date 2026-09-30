@@ -167,7 +167,7 @@ export function SearchProximityListModal({
                         onClick={() => onSelectPlace(place)}
                       >
                         {(() => {
-                          const displayPhoto = getPlacePhoto(place.name, place.photoUrl);
+                          const displayPhoto = getPlacePhoto(place.name, place.photoUrl, { lat: place.lat, lng: place.lng });
                           return (
                             <PhotoWithFallback 
                               name={place.name} 
