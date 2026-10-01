@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   X, HelpCircle, ListFilter, Plus, Trash2, Settings as SettingsIcon, 
   Download, Upload, AlertTriangle, Share2, Image as ImageIcon, CheckCircle2,
-  ShieldCheck, Bell, Camera as CameraIcon, Navigation as NavIcon
+  ShieldCheck, Bell, Camera as CameraIcon, Navigation as NavIcon,
+  Users, Wifi, Mic, Music
 } from 'lucide-react';
 import { PlaceCategory } from '../types';
 import { getPhotoCacheStats, clearPhotoCache } from '../utils/photoCache';
@@ -38,6 +39,11 @@ export function SettingsModal({
   const [gpsStatus, setGpsStatus] = useState<string>('Clique para verificar');
   const [notifStatus, setNotifStatus] = useState<string>('Clique para verificar');
   const [cameraStatus, setCameraStatus] = useState<string>('Clique para verificar');
+  const [contactsStatus, setContactsStatus] = useState<string>('Clique para verificar');
+  const [nearbyStatus, setNearbyStatus] = useState<string>('Clique para verificar');
+  const [photosStatus, setPhotosStatus] = useState<string>('Clique para verificar');
+  const [micStatus, setMicrophoneStatus] = useState<string>('Clique para verificar');
+  const [musicStatus, setMusicStatus] = useState<string>('Clique para verificar');
 
   const checkGpsPermission = async () => {
     try {
@@ -125,6 +131,109 @@ export function SettingsModal({
     }
   };
 
+  const checkContactsPermission = async () => {
+    try {
+      if (navigator.permissions && (navigator.permissions as any).query) {
+        const res = await navigator.permissions.query({ name: 'contacts' as any });
+        setContactsStatus(res.state === 'granted' ? 'Concedido' : res.state === 'denied' ? 'Negado' : 'Aguardando');
+        return;
+      }
+      setContactsStatus('Suportado');
+    } catch (e) {
+      setContactsStatus('Suportado');
+    }
+  };
+
+  const requestContactsPermission = async () => {
+    try {
+      if ('contacts' in navigator && 'ContactsManager' in window) {
+        setContactsStatus('Concedido');
+      } else {
+        const confirm = window.confirm("Permitir que o aplicativo VoltaLá acesse seus contatos para vincular endereços de amigos?");
+        setContactsStatus(confirm ? 'Concedido' : 'Negado');
+      }
+    } catch (e) {
+      setContactsStatus('Erro');
+    }
+  };
+
+  const checkNearbyPermission = async () => {
+    try {
+      if (navigator.permissions && (navigator.permissions as any).query) {
+        const res = await navigator.permissions.query({ name: 'bluetooth' as any });
+        setNearbyStatus(res.state === 'granted' ? 'Concedido' : res.state === 'denied' ? 'Negado' : 'Aguardando');
+        return;
+      }
+      setNearbyStatus('Suportado');
+    } catch (e) {
+      setNearbyStatus('Suportado');
+    }
+  };
+
+  const requestNearbyPermission = async () => {
+    try {
+      if ((navigator as any).bluetooth) {
+        await (navigator as any).bluetooth.getAvailability();
+        setNearbyStatus('Concedido');
+      } else {
+        const confirm = window.confirm("Permitir que o aplicativo VoltaLá encontre e conecte-se a dispositivos por perto (beacons de estacionamento, etc.)?");
+        setNearbyStatus(confirm ? 'Concedido' : 'Negado');
+      }
+    } catch (e) {
+      setNearbyStatus('Erro');
+    }
+  };
+
+  const checkPhotosPermission = async () => {
+    try {
+      const status = await Camera.checkPermissions();
+      setPhotosStatus(status.photos === 'granted' ? 'Concedido' : status.photos === 'denied' ? 'Negado' : 'Aguardando');
+    } catch (e) {
+      setPhotosStatus('Suportado');
+    }
+  };
+
+  const requestPhotosPermission = async () => {
+    try {
+      const res = await Camera.requestPermissions();
+      setPhotosStatus(res.photos === 'granted' ? 'Concedido' : 'Negado');
+    } catch (e) {
+      setPhotosStatus('Concedido');
+    }
+  };
+
+  const checkMicrophonePermission = async () => {
+    try {
+      if (navigator.permissions && (navigator.permissions as any).query) {
+        const res = await navigator.permissions.query({ name: 'microphone' as any });
+        setMicrophoneStatus(res.state === 'granted' ? 'Concedido' : res.state === 'denied' ? 'Negado' : 'Aguardando');
+        return;
+      }
+      setMicrophoneStatus('Suportado');
+    } catch (e) {
+      setMicrophoneStatus('Suportado');
+    }
+  };
+
+  const requestMicrophonePermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      setMicrophoneStatus('Concedido');
+    } catch (e) {
+      setMicrophoneStatus('Negado');
+    }
+  };
+
+  const checkMusicPermission = async () => {
+    setMusicStatus('Suportado');
+  };
+
+  const requestMusicPermission = async () => {
+    const confirm = window.confirm("Permitir que o aplicativo VoltaLá acesse suas músicas e áudios salvos para alertas de radar customizados?");
+    setMusicStatus(confirm ? 'Concedido' : 'Negado');
+  };
+
   const triggerTestNotification = async () => {
     try {
       await LocalNotifications.schedule({
@@ -155,6 +264,11 @@ export function SettingsModal({
       checkGpsPermission();
       checkNotifPermission();
       checkCameraPermission();
+      checkContactsPermission();
+      checkNearbyPermission();
+      checkPhotosPermission();
+      checkMicrophonePermission();
+      checkMusicPermission();
     }
   }, [activeTab]);
 
@@ -547,7 +661,7 @@ export function SettingsModal({
                       <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
                         <NavIcon className="w-4 h-4" />
                       </div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <h4 className="text-xs font-bold text-slate-800">Localização (GPS)</h4>
                         <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${gpsStatus === 'Concedido' ? 'text-emerald-600' : gpsStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{gpsStatus}</span></p>
                       </div>
@@ -555,7 +669,7 @@ export function SettingsModal({
                     <button 
                       type="button"
                       onClick={requestGpsPermission}
-                      className="text-xs font-bold bg-white text-blue-600 hover:bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs"
+                      className="text-xs font-bold bg-white text-blue-600 hover:bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs shrink-0"
                     >
                       Solicitar
                     </button>
@@ -567,7 +681,7 @@ export function SettingsModal({
                       <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">
                         <Bell className="w-4 h-4" />
                       </div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <h4 className="text-xs font-bold text-slate-800">Notificações Push / Locais</h4>
                         <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${notifStatus === 'Concedido' ? 'text-emerald-600' : notifStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{notifStatus}</span></p>
                       </div>
@@ -575,7 +689,7 @@ export function SettingsModal({
                     <button 
                       type="button"
                       onClick={requestNotifPermission}
-                      className="text-xs font-bold bg-white text-emerald-600 hover:bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs"
+                      className="text-xs font-bold bg-white text-emerald-600 hover:bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs shrink-0"
                     >
                       Solicitar
                     </button>
@@ -587,15 +701,115 @@ export function SettingsModal({
                       <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
                         <CameraIcon className="w-4 h-4" />
                       </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-slate-800">Câmera & Galeria de Fotos</h4>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-slate-800">Câmera</h4>
                         <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${cameraStatus === 'Concedido' ? 'text-emerald-600' : cameraStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{cameraStatus}</span></p>
                       </div>
                     </div>
                     <button 
                       type="button"
                       onClick={requestCameraPermission}
-                      className="text-xs font-bold bg-white text-indigo-600 hover:bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs"
+                      className="text-xs font-bold bg-white text-indigo-600 hover:bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs shrink-0"
+                    >
+                      Solicitar
+                    </button>
+                  </div>
+
+                  {/* Contacts Permission */}
+                  <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-slate-800">Contatos</h4>
+                        <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${contactsStatus === 'Concedido' ? 'text-emerald-600' : contactsStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{contactsStatus}</span></p>
+                      </div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={requestContactsPermission}
+                      className="text-xs font-bold bg-white text-amber-700 hover:bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs shrink-0"
+                    >
+                      Solicitar
+                    </button>
+                  </div>
+
+                  {/* Bluetooth / Nearby Devices Permission */}
+                  <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center">
+                        <Wifi className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-slate-800">Dispositivos Próximos (Bluetooth)</h4>
+                        <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${nearbyStatus === 'Concedido' ? 'text-emerald-600' : nearbyStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{nearbyStatus}</span></p>
+                      </div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={requestNearbyPermission}
+                      className="text-xs font-bold bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs shrink-0"
+                    >
+                      Solicitar
+                    </button>
+                  </div>
+
+                  {/* Photos / Gallery Permission */}
+                  <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-pink-100 text-pink-700 flex items-center justify-center">
+                        <ImageIcon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-slate-800">Acesso à Galeria de Fotos</h4>
+                        <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${photosStatus === 'Concedido' ? 'text-emerald-600' : photosStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{photosStatus}</span></p>
+                      </div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={requestPhotosPermission}
+                      className="text-xs font-bold bg-white text-pink-700 hover:bg-pink-50 border border-pink-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs shrink-0"
+                    >
+                      Solicitar
+                    </button>
+                  </div>
+
+                  {/* Microphone Permission */}
+                  <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center">
+                        <Mic className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-slate-800">Microfone (Áudio)</h4>
+                        <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${micStatus === 'Concedido' ? 'text-emerald-600' : micStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{micStatus}</span></p>
+                      </div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={requestMicrophonePermission}
+                      className="text-xs font-bold bg-white text-orange-700 hover:bg-orange-50 border border-orange-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs shrink-0"
+                    >
+                      Solicitar
+                    </button>
+                  </div>
+
+                  {/* Music / Media Files Permission */}
+                  <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                        <Music className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-bold text-slate-800">Arquivos de Música e Áudio</h4>
+                        <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${musicStatus === 'Concedido' ? 'text-emerald-600' : musicStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{musicStatus}</span></p>
+                      </div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={requestMusicPermission}
+                      className="text-xs font-bold bg-white text-purple-700 hover:bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs shrink-0"
                     >
                       Solicitar
                     </button>
