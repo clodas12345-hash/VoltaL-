@@ -465,6 +465,24 @@ export default function App() {
           detectedAt: Date.now(),
         });
 
+        // Trigger native push-like local notification when Radar detects a target in background
+        try {
+          import('@capacitor/local-notifications').then(({ LocalNotifications }) => {
+            LocalNotifications.schedule({
+              notifications: [
+                {
+                  title: `Radar VoltaLá 📡 ${closest.name}`,
+                  body: `Localizado a ${distText} de você! Monitorado: "${radarConfig.keyword}"`,
+                  id: Math.floor(Math.random() * 1000000),
+                  schedule: { at: new Date(Date.now() + 500) }
+                }
+              ]
+            }).catch(console.error);
+          });
+        } catch (e) {
+          console.warn('Native notifications not available:', e);
+        }
+
         // Trigger audio chime if enabled
         if (radarConfig.soundEnabled) {
           playRadarDetectionChime();
@@ -1218,7 +1236,18 @@ export default function App() {
       {selectedPlaceToView && (
         <PlaceDetailModal
           place={selectedPlaceToView}
-          onClose={() => setSelectedPlaceToView(null)}
+          onClose={() => {
+            setSelectedPlaceToView(null);
+            if (searchQuery) {
+              const center = userLocation || { lat: -23.5505, lng: -46.6333 };
+              setFocusLocationTrigger({
+                lat: center.lat,
+                lng: center.lng,
+                zoom: getZoomForRadius(searchRadius),
+                timestamp: Date.now()
+              });
+            }
+          }}
           onSave={handleSavePlace}
           existingSaved={existingSaved}
           userLocation={userLocation}

@@ -638,37 +638,187 @@ export function DemoMap({
   // Filter mock POIs by search query, radius and category filter
 
 function getDynamicSearchPins(query: string, center: { lat: number; lng: number }, radiusMeters: number): MapPinType[] {
+  const qLower = query.toLowerCase().trim();
   const qCapitalized = query.charAt(0).toUpperCase() + query.slice(1);
-  const count = 6;
+  const count = 8; // Generate up to 8 pins to make the map look beautifully populated!
   const pins: MapPinType[] = [];
   const radiusKm = radiusMeters / 1000;
-  
+
+  // Check query domain
+  const isConstruction = 
+    qLower.includes('constru') || 
+    qLower.includes('material') || 
+    qLower.includes('ferragem') || 
+    qLower.includes('madeira') || 
+    qLower.includes('tinta') || 
+    qLower.includes('gesso') || 
+    qLower.includes('cimento') || 
+    qLower.includes('tijolo') || 
+    qLower.includes('encanamento') || 
+    qLower.includes('reforma') || 
+    qLower.includes('ferramenta') || 
+    qLower.includes('obra') ||
+    qLower.includes('hidraul') ||
+    qLower.includes('eletric');
+
+  const isFood = 
+    qLower.includes('restaurante') || 
+    qLower.includes('comida') || 
+    qLower.includes('almoço') || 
+    qLower.includes('jantar') || 
+    qLower.includes('pizz') || 
+    qLower.includes('sushi') || 
+    qLower.includes('burg') || 
+    qLower.includes('lanche') || 
+    qLower.includes('churras');
+
+  const isBakery = 
+    qLower.includes('padaria') || 
+    qLower.includes('pão') || 
+    qLower.includes('pao') || 
+    qLower.includes('cafe') || 
+    qLower.includes('café');
+
+  const isPharmacy = 
+    qLower.includes('farmacia') || 
+    qLower.includes('farmácia') || 
+    qLower.includes('drogaria') || 
+    qLower.includes('remedio');
+
+  const isAutomotive = 
+    qLower.includes('oficina') || 
+    qLower.includes('mecanic') || 
+    qLower.includes('car ') || 
+    qLower.includes('auto') || 
+    qLower.includes('peça') || 
+    qLower.includes('lava') || 
+    qLower.includes('posto');
+
+  // Realistic business datasets
+  const constructionData = [
+    { name: "Depósito de Materiais Silva & Filhos", desc: "Depósito completo com cimento, tijolo, areia, brita, ferro e materiais básicos do alicerce ao telhado.", photo: "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3966-2244", cat: "Outros" },
+    { name: "Ferragens e Ferramentas Casa Verde", desc: "Grande variedade de ferramentas elétricas, manuais, parafusos, fechaduras e ferragens em geral.", photo: "https://images.unsplash.com/photo-1530124560072-aae84ca2dd78?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3858-1515", cat: "Outros" },
+    { name: "Tintas Premium & Acabamentos", desc: "Especialistas em tintas imobiliárias, vernizes, pincéis, solventes e preparação de cores personalizadas.", photo: "https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3951-8080", cat: "Outros" },
+    { name: "Madeireira e Material de Construção Progresso", desc: "Tudo em madeiras brutas e aparelhadas, compensados, telhas e materiais pesados para cobertura.", photo: "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3961-3030", cat: "Outros" },
+    { name: "Hidráulica, Elétrica & Utilidades Central", desc: "Tubos e conexões de PVC, fios, cabos, disjuntores, tomadas e todo material hidráulico e elétrico.", photo: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3857-4545", cat: "Outros" },
+    { name: "Cimento & Tijolo Distribuidora Baruel", desc: "Cimento CP-II, blocos de concreto, canaletas, tijolos baianos e materiais de alvenaria com entrega rápida.", photo: "https://images.unsplash.com/photo-1590069261209-f8e9b8642343?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3965-7070", cat: "Outros" },
+    { name: "Gesso, Drywall e Decorações São Paulo", desc: "Placas de gesso, perfis de drywall, molduras, massas e ferramentas especiais para gesseiros e decoradores.", photo: "https://images.unsplash.com/photo-1513694203232-719a280e022f?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3855-6060", cat: "Outros" },
+    { name: "Lojão da Reforma & Construção Inteligente", desc: "O maior estoque da região para reformas rápidas, pisos, revestimentos, argamassas e louças sanitárias.", photo: "https://images.unsplash.com/photo-1517646287270-a5a9ca602e5c?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3955-9090", cat: "Outros" }
+  ];
+
+  const foodData = [
+    { name: "Churrascaria e Grelhados Pampa", desc: "Carnes nobres na brasa, buffet completo de saladas e pratos quentes em ambiente acolhedor.", photo: "https://images.unsplash.com/photo-1544025162-d76694265947?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3289-4040", cat: "Restaurante" },
+    { name: "Pizzaria Bella Itália", desc: "Pizzas artesanais assadas em forno a lenha, massas frescas e carta de vinhos selecionados.", photo: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3256-5050", cat: "Restaurante" },
+    { name: "Sabor da Roça - Self Service", desc: "O melhor da comida caseira e mineira no fogão a lenha, variedade de pratos quentes e doces caseiros.", photo: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3120-6060", cat: "Restaurante" },
+    { name: "Sushi House - Culinária Japonesa", desc: "Combinados frescos, temakis, sashimis, pratos quentes e rodízio completo em ambiente moderno.", photo: "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3259-7070", cat: "Restaurante" },
+    { name: "Artesanal Burger & Fries", desc: "Hambúrgueres grelhados no fogo forte, batata frita rústica crocante e milkshakes artesanais deliciosos.", photo: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3150-8080", cat: "Restaurante" },
+    { name: "Cantina di Napoli", desc: "Tradicional cantina italiana com rodízio de massas caseiras, lasanhas, canelones e galeto assado.", photo: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3123-9090", cat: "Restaurante" },
+    { name: "Tacos & Beers Cocina Mexicana", desc: "Tacos crocantes, burritos recheados, quesadillas, margaritas e chopp gelado para happy hour.", photo: "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3111-2020", cat: "Restaurante" },
+    { name: "Restaurante Vegetariano Vida Verde", desc: "Pratos saudáveis, buffet de saladas orgânicas, sucos naturais e sobremesas sem açúcar.", photo: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3222-3030", cat: "Restaurante" }
+  ];
+
+  const bakeryData = [
+    { name: "Padaria Realeza da Casa Verde", desc: "Pães quentinhos a toda hora, confeitaria fina, salgados, cafés especiais e buffet de café da manhã completo.", photo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3966-1010", cat: "Padaria" },
+    { name: "Café Gourmet Ponto Alto", desc: "Cafés espressos premiados, cappuccinos, bolos caseiros, pães de queijo e croissants recheados.", photo: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3858-2020", cat: "Cafeteria" },
+    { name: "Panificadora e Doceria Elite", desc: "Pão francês crocante, sonhos recheados, bolos de festa personalizados e salgados fritos na hora.", photo: "https://images.unsplash.com/photo-1517433456452-f9633a875f6f?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3951-3030", cat: "Padaria" },
+    { name: "Empório do Pão Artesanal", desc: "Pães de fermentação natural (levain), baguetes tradicionais, croissants franceses e geleias orgânicas.", photo: "https://images.unsplash.com/photo-1549931319-a545dcf3bc73?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3961-4040", cat: "Padaria" }
+  ];
+
+  const pharmacyData = [
+    { name: "Drogaria São Paulo Central", desc: "Medicamentos genéricos, perfumaria, higiene, dermocosméticos e atendimento farmacêutico personalizado.", photo: "https://images.unsplash.com/photo-1631549916768-4119b2e55c26?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3965-8080", cat: "Farmácia" },
+    { name: "Farmácia de Manipulação BioFórmula", desc: "Manipulação precisa de receitas, cosméticos naturais, homeopatia e suplementação esportiva.", photo: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3855-9090", cat: "Farmácia" },
+    { name: "Drogaria Mais Barata - Plantão 24h", desc: "Descontos imbatíveis em medicamentos contínuos, fraldas, leites infantis e perfumaria básica. Aberta 24 horas.", photo: "https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3955-1010", cat: "Farmácia" },
+    { name: "Farmácia e Perfumaria Preço Justo", desc: "Medicamentos populares, testes rápidos, aferição de pressão e aplicação de injetáveis.", photo: "https://images.unsplash.com/photo-1587854692152-cbe660db0969?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3966-5050", cat: "Farmácia" }
+  ];
+
+  const automotiveData = [
+    { name: "Centro Automotivo & Mecânica Baruel", desc: "Manutenção de motores, suspensão, freios, troca de óleo, alinhamento e balanceamento computadorizado.", photo: "https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3966-3300", cat: "Automotivo" },
+    { name: "Lava Rápido e Estética Car Brilho", desc: "Lavagem detalhada, higienização interna, polimento técnico, cristalização e revitalização de plásticos.", photo: "https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3857-4400", cat: "Automotivo" },
+    { name: "Auto Peças & Baterias Casa Verde", desc: "Amplo estoque de peças nacionais e importadas, óleos, filtros, baterias automotivas e palhetas.", photo: "https://images.unsplash.com/photo-1517524206127-48bbd363f3d7?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3951-5500", cat: "Automotivo" },
+    { name: "Oficina de Escapamentos e Suspensão Rápida", desc: "Troca de amortecedores, escapamentos originais e esportivos, molas e diagnóstico de ruídos gratuitos.", photo: "https://images.unsplash.com/photo-1507136566006-cfc505b114fc?w=600&auto=format&fit=crop&q=80", phone: "+55 11 3961-6600", cat: "Automotivo" }
+  ];
+
+  // Pick dataset
+  let dataset = [];
+  if (isConstruction) dataset = constructionData;
+  else if (isFood) dataset = foodData;
+  else if (isBakery) dataset = bakeryData;
+  else if (isPharmacy) dataset = pharmacyData;
+  else if (isAutomotive) dataset = automotiveData;
+
+  // Neighborhood and street lists for realistic address synthesization
+  const neighborhoods = [
+    "Vila Baruel, São Paulo - SP",
+    "Casa Verde, São Paulo - SP",
+    "Imirim, São Paulo - SP",
+    "Santana, São Paulo - SP",
+    "Jardim das Laranjeiras, São Paulo - SP",
+    "Limão, São Paulo - SP"
+  ];
+  const streets = [
+    "Av. Baruel",
+    "R. Relíquia",
+    "Av. Casa Verde",
+    "R. Dr. César Castiglioni Júnior",
+    "R. Alfredo Pujol",
+    "Av. Imirim",
+    "R. Voluntários da Pátria"
+  ];
+
   for (let i = 0; i < count; i++) {
-    const angle = (i / count) * Math.PI * 2 + 0.2;
-    const distOffset = (0.2 + (i * 0.15)) * Math.min(radiusKm, 1.8);
+    const angle = (i / count) * Math.PI * 2 + 0.15;
+    const distOffset = (0.2 + (i * 0.14)) * Math.min(radiusKm, 1.8);
     const latDelta = (distOffset / 111.32) * Math.cos(angle);
     const lngDelta = (distOffset / (111.32 * Math.cos(center.lat * Math.PI / 180))) * Math.sin(angle);
     
     const lat = center.lat + latDelta;
     const lng = center.lng + lngDelta;
+
+    const hash = Math.abs(Math.floor((lat + lng) * 100000));
     
-    const suffixes = ["Central", "Express", "Especializado", "Matriz", "Comércio & Serviços", "Fins & Reformas"];
-    const suffix = suffixes[i % suffixes.length];
-    
+    let nameStr = "";
+    let descStr = "";
+    let photoStr = "";
+    let phoneStr = "";
+    let categoryStr: PlaceCategory = "Outros";
+
+    if (dataset.length > 0) {
+      const dataItem = dataset[i % dataset.length];
+      nameStr = dataItem.name;
+      descStr = dataItem.desc;
+      photoStr = dataItem.photo;
+      phoneStr = dataItem.phone;
+      categoryStr = dataItem.cat;
+    } else {
+      // Fallback generic business generation
+      const suffixes = ["Central", "Express", "Especializado", "Matriz", "Comércio & Serviços", "Fins & Reformas", "Premium", "Prático"];
+      const suffix = suffixes[i % suffixes.length];
+      nameStr = `${qCapitalized} ${suffix} ${i+1}`;
+      descStr = `Estabelecimento especializado em ${query}. Produtos, materiais, atendimento profissional e entrega rápida.`;
+      photoStr = "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80";
+      phoneStr = `+55 11 3${(i + 400)} ${(i + 6000)}-${(i + 3000)}`;
+      categoryStr = "Outros";
+    }
+
+    const street = streets[(hash + i) % streets.length];
+    const number = ((hash + i) % 850) + 42;
+    const neighborhood = neighborhoods[(hash + i) % neighborhoods.length];
+    const addressStr = `${street}, ${number} - ${neighborhood}`;
+
     pins.push({
-      id: `dynamic-${query.toLowerCase().replace(/\s+/g, "-")}-${i+1}`,
-      name: `${qCapitalized} ${suffix} ${i+1}`,
-      address: `Av. Comercial / Rua Principal, ${150 + i * 60} - Região Atendida`,
+      id: `dynamic-${qLower.replace(/\s+/g, "-")}-${i+1}`,
+      name: nameStr,
+      address: addressStr,
       lat,
       lng,
-      category: "Outros",
-      rating: Number((4.5 + (i * 0.08)).toFixed(1)),
-      userRatingsTotal: 50 + i * 30,
-      priceLevel: "R$ 40 - R$ 180 por produto/serviço",
-      phoneNumber: `+55 11 3${(i + 400)} ${(i + 6000)}-${(i + 3000)}`,
+      category: categoryStr,
+      rating: Number((4.4 + ((hash % 6) * 0.1)).toFixed(1)),
+      userRatingsTotal: 30 + i * 28 + (hash % 120),
+      priceLevel: isConstruction ? "R$ 40 - R$ 180 por produto/serviço" : "R$ 30 - R$ 75 por pessoa",
+      phoneNumber: phoneStr,
       website: "https://maps.google.com",
-      photoUrl: "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600&auto=format&fit=crop&q=80",
-      description: `Estabelecimento especializado em ${query}. Produtos, materiais, atendimento profissional e entrega rápida.`,
+      photoUrl: photoStr,
+      description: descStr,
       openingHours: [
         "segunda-feira: 08:00 – 18:00",
         "terça-feira: 08:00 – 18:00",

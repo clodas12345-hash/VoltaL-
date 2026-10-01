@@ -1,9 +1,14 @@
-import React, { useState, useRef } from 'react';
-import { X, HelpCircle, ListFilter, Plus, Trash2, Settings as SettingsIcon, Download, Upload, AlertTriangle, Share2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  X, HelpCircle, ListFilter, Plus, Trash2, Settings as SettingsIcon, 
+  Download, Upload, AlertTriangle, Share2, Image as ImageIcon, CheckCircle2,
+  ShieldCheck, Bell, Camera as CameraIcon, Navigation as NavIcon
+} from 'lucide-react';
 import { PlaceCategory } from '../types';
 import { getPhotoCacheStats, clearPhotoCache } from '../utils/photoCache';
-import { Image as ImageIcon, CheckCircle2 } from 'lucide-react';
 import { ICON_BASE64 } from '../iconBase64';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { Camera } from '@capacitor/camera';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -24,15 +29,132 @@ export function SettingsModal({
   radarConfig,
   setRadarConfig
 }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<'categories' | 'backup' | 'help'>('categories');
+  const [activeTab, setActiveTab] = useState<'categories' | 'backup' | 'permissions' | 'help'>('categories');
   const [newCat, setNewCat] = useState('');
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [cacheStats, setCacheStats] = useState<{ count: number; estimatedSizeKb: number }>({ count: 0, estimatedSizeKb: 0 });
   const [cacheClearedMsg, setCacheClearedMsg] = useState(false);
 
-  React.useEffect(() => {
+  const [gpsStatus, setGpsStatus] = useState<string>('Clique para verificar');
+  const [notifStatus, setNotifStatus] = useState<string>('Clique para verificar');
+  const [cameraStatus, setCameraStatus] = useState<string>('Clique para verificar');
+
+  const checkGpsPermission = async () => {
+    try {
+      if ('geolocation' in navigator) {
+        if (navigator.permissions && (navigator.permissions as any).query) {
+          const res = await navigator.permissions.query({ name: 'geolocation' as any });
+          setGpsStatus(res.state === 'granted' ? 'Concedido' : res.state === 'denied' ? 'Negado' : 'Aguardando');
+          return;
+        }
+      }
+      setGpsStatus('Suportado');
+    } catch (e) {
+      setGpsStatus('Suportado');
+    }
+  };
+
+  const requestGpsPermission = async () => {
+    try {
+      navigator.geolocation.getCurrentPosition(
+        () => {
+          setGpsStatus('Concedido');
+        },
+        (err) => {
+          setGpsStatus(err.code === 1 ? 'Negado' : 'Erro');
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    } catch (e) {
+      setGpsStatus('Erro');
+    }
+  };
+
+  const checkNotifPermission = async () => {
+    try {
+      const status = await LocalNotifications.checkPermissions();
+      setNotifStatus(status.display === 'granted' ? 'Concedido' : status.display === 'denied' ? 'Negado' : 'Aguardando');
+    } catch (e) {
+      if ('Notification' in window) {
+        setNotifStatus(Notification.permission === 'granted' ? 'Concedido' : Notification.permission === 'denied' ? 'Negado' : 'Aguardando');
+      } else {
+        setNotifStatus('Não suportado');
+      }
+    }
+  };
+
+  const requestNotifPermission = async () => {
+    try {
+      const res = await LocalNotifications.requestPermissions();
+      setNotifStatus(res.display === 'granted' ? 'Concedido' : 'Negado');
+    } catch (e) {
+      if ('Notification' in window) {
+        const res = await Notification.requestPermission();
+        setNotifStatus(res === 'granted' ? 'Concedido' : 'Negado');
+      } else {
+        setNotifStatus('Não suportado');
+      }
+    }
+  };
+
+  const checkCameraPermission = async () => {
+    try {
+      const status = await Camera.checkPermissions();
+      setCameraStatus(status.camera === 'granted' ? 'Concedido' : status.camera === 'denied' ? 'Negado' : 'Aguardando');
+    } catch (e) {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        setCameraStatus('Suportado');
+      } else {
+        setCameraStatus('Não suportado');
+      }
+    }
+  };
+
+  const requestCameraPermission = async () => {
+    try {
+      const res = await Camera.requestPermissions();
+      setCameraStatus(res.camera === 'granted' ? 'Concedido' : 'Negado');
+    } catch (e) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(track => track.stop());
+        setCameraStatus('Concedido');
+      } catch (err) {
+        setCameraStatus('Negado');
+      }
+    }
+  };
+
+  const triggerTestNotification = async () => {
+    try {
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            title: 'VoltaLá 📡 Teste de Notificação',
+            body: 'As notificações do VoltaLá estão funcionando perfeitamente no seu dispositivo!',
+            id: Math.floor(Math.random() * 1000000),
+            schedule: { at: new Date(Date.now() + 1000) }
+          }
+        ]
+      });
+    } catch (e) {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('VoltaLá 📡 Teste de Notificação', {
+          body: 'As notificações do VoltaLá estão funcionando perfeitamente no seu dispositivo!'
+        });
+      } else {
+        alert('Por favor, conceda permissão de notificações primeiro!');
+      }
+    }
+  };
+
+  useEffect(() => {
     if (activeTab === 'backup') {
       getPhotoCacheStats().then(setCacheStats);
+    } else if (activeTab === 'permissions') {
+      checkGpsPermission();
+      checkNotifPermission();
+      checkCameraPermission();
     }
   }, [activeTab]);
 
@@ -234,6 +356,12 @@ export function SettingsModal({
             <Trash2 className="w-4 h-4" /> Backup
           </button>
           <button 
+            onClick={() => setActiveTab('permissions')}
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${activeTab === 'permissions' ? 'bg-white shadow-sm text-blue-700 border border-slate-200/60' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <ShieldCheck className="w-4 h-4" /> Permissões
+          </button>
+          <button 
             onClick={() => setActiveTab('help')}
             className={`flex-1 py-2 px-2.5 rounded-xl text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${activeTab === 'help' ? 'bg-white shadow-sm text-blue-700 border border-slate-200/60' : 'text-slate-500 hover:bg-slate-100'}`}
           >
@@ -396,6 +524,98 @@ export function SettingsModal({
                 <p className="text-[10px] text-slate-500 leading-relaxed">
                   O backup gera um arquivo de texto (.json) que contém todas as suas informações do app. Você pode guardar este arquivo no Google Drive, iCloud ou enviar para si mesmo para nunca perder seus lugares favoritos.
                 </p>
+              </div>
+            </div>
+          )}
+          {activeTab === 'permissions' && (
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-sm">Controle de Permissões</h3>
+                    <p className="text-[11px] text-slate-500">Verifique e conceda permissões nativas para o app funcionar 100%.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 mt-4">
+                  {/* GPS / Location Permission */}
+                  <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                        <NavIcon className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800">Localização (GPS)</h4>
+                        <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${gpsStatus === 'Concedido' ? 'text-emerald-600' : gpsStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{gpsStatus}</span></p>
+                      </div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={requestGpsPermission}
+                      className="text-xs font-bold bg-white text-blue-600 hover:bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs"
+                    >
+                      Solicitar
+                    </button>
+                  </div>
+
+                  {/* Notification Permission */}
+                  <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                        <Bell className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800">Notificações Push / Locais</h4>
+                        <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${notifStatus === 'Concedido' ? 'text-emerald-600' : notifStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{notifStatus}</span></p>
+                      </div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={requestNotifPermission}
+                      className="text-xs font-bold bg-white text-emerald-600 hover:bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs"
+                    >
+                      Solicitar
+                    </button>
+                  </div>
+
+                  {/* Camera Permission */}
+                  <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                        <CameraIcon className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800">Câmera & Galeria de Fotos</h4>
+                        <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${cameraStatus === 'Concedido' ? 'text-emerald-600' : cameraStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{cameraStatus}</span></p>
+                      </div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={requestCameraPermission}
+                      className="text-xs font-bold bg-white text-indigo-600 hover:bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl cursor-pointer shadow-2xs"
+                    >
+                      Solicitar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-4 border-t border-slate-100 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Testar Notificação</h4>
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    Clique no botão abaixo para simular um alerta sonoro e de vibração imediato no aparelho, confirmando que as notificações em background estão ativadas.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={triggerTestNotification}
+                    className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Bell className="w-4 h-4 text-amber-400 fill-amber-400" />
+                    <span>Enviar Notificação de Teste</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
