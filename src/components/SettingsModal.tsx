@@ -10,6 +10,7 @@ import { getPhotoCacheStats, clearPhotoCache } from '../utils/photoCache';
 import { ICON_BASE64 } from '../iconBase64';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Camera } from '@capacitor/camera';
+import { requestNotificationPermission, sendAppNotification } from '../utils/notifications';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -90,17 +91,8 @@ export function SettingsModal({
   };
 
   const requestNotifPermission = async () => {
-    try {
-      const res = await LocalNotifications.requestPermissions();
-      setNotifStatus(res.display === 'granted' ? 'Concedido' : 'Negado');
-    } catch (e) {
-      if ('Notification' in window) {
-        const res = await Notification.requestPermission();
-        setNotifStatus(res === 'granted' ? 'Concedido' : 'Negado');
-      } else {
-        setNotifStatus('Não suportado');
-      }
-    }
+    const granted = await requestNotificationPermission();
+    setNotifStatus(granted ? 'Concedido' : 'Negado');
   };
 
   const checkCameraPermission = async () => {
@@ -235,26 +227,9 @@ export function SettingsModal({
   };
 
   const triggerTestNotification = async () => {
-    try {
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            title: 'VoltaLá 📡 Teste de Notificação',
-            body: 'As notificações do VoltaLá estão funcionando perfeitamente no seu dispositivo!',
-            id: Math.floor(Math.random() * 1000000),
-            schedule: { at: new Date(Date.now() + 1000) }
-          }
-        ]
-      });
-    } catch (e) {
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('VoltaLá 📡 Teste de Notificação', {
-          body: 'As notificações do VoltaLá estão funcionando perfeitamente no seu dispositivo!'
-        });
-      } else {
-        alert('Por favor, conceda permissão de notificações primeiro!');
-      }
-    }
+    await sendAppNotification('VoltaLá 📡 Teste de Notificação', {
+      body: 'As notificações do VoltaLá estão funcionando perfeitamente no seu dispositivo!'
+    });
   };
 
   useEffect(() => {

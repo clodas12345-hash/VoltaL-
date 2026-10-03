@@ -94,7 +94,7 @@ jobs:
         fi
 
         # Gera ícones com Safe Zone do Android
-        node scripts/generate-android-icons.cjs
+        npm run generate-android-icons
 
         # Sincroniza os assets para o Android
         npx --yes @capacitor/cli sync android

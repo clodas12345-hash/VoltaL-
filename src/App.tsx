@@ -15,6 +15,7 @@ import { REAL_SP_ESTABLISHMENTS } from './data/establishments';
 import { playRadarDetectionChime } from './utils/audio';
 import { getDistanceMeters, normalizeText, generateDemoRadarPlaces } from './utils/radarScanner';
 import { isValidAttachment } from './utils/fileAttachment';
+import { requestNotificationPermission, sendAppNotification } from './utils/notifications';
 import { ICON_BASE64 } from './iconBase64';
 
 const STORAGE_KEY = 'google_maps_favoritos_places_v1';
@@ -314,6 +315,7 @@ export default function App() {
       localStorage.setItem(RADAR_CONFIG_KEY, JSON.stringify(newConfig));
     } catch (e) {}
     if (newConfig.isActive) {
+      requestNotificationPermission().catch(console.error);
       showToast(`Radar ligado! Monitorando "${newConfig.keyword}" no raio de ${(newConfig.radiusMeters / 1000).toFixed(1)} km`);
       // Reset alerted set when user updates or enables radar with new query
       radarAlertedPlaceIdsRef.current.clear();
@@ -466,22 +468,9 @@ export default function App() {
         });
 
         // Trigger native push-like local notification when Radar detects a target in background
-        try {
-          import('@capacitor/local-notifications').then(({ LocalNotifications }) => {
-            LocalNotifications.schedule({
-              notifications: [
-                {
-                  title: `Radar VoltaLá 📡 ${closest.name}`,
-                  body: `Localizado a ${distText} de você! Monitorado: "${radarConfig.keyword}"`,
-                  id: Math.floor(Math.random() * 1000000),
-                  schedule: { at: new Date(Date.now() + 500) }
-                }
-              ]
-            }).catch(console.error);
-          });
-        } catch (e) {
-          console.warn('Native notifications not available:', e);
-        }
+        sendAppNotification(`Radar VoltaLá 📡 ${closest.name}`, {
+          body: `Localizado a ${distText} de você! Monitorado: "${radarConfig.keyword}"`
+        }).catch(console.error);
 
         // Trigger audio chime if enabled
         if (radarConfig.soundEnabled) {
@@ -865,6 +854,9 @@ export default function App() {
       createdAt: new Date().toISOString(),
     };
     setSavedPlaces([newPlace, ...savedPlaces]);
+    sendAppNotification('Local Salvo no VoltaLá 📍', {
+      body: `Local "${newPlace.name}" salvo rapidamente nos seus favoritos!`
+    }).catch(console.error);
     showToast(`Local "${newPlace.name}" salvo rapidamente!`);
   };
 
@@ -892,6 +884,9 @@ export default function App() {
         address: selectedPlaceToView.address,
       };
       setSavedPlaces(updated);
+      sendAppNotification('Local Atualizado 📍', {
+        body: `Local "${name}" atualizado nos seus favoritos!`
+      }).catch(console.error);
       showToast(`Local "${name}" atualizado nos favoritos!`);
     } else {
       // Add new
@@ -916,6 +911,9 @@ export default function App() {
         createdAt: new Date().toISOString(),
       };
       setSavedPlaces([newPlace, ...savedPlaces]);
+      sendAppNotification('Local Salvo no VoltaLá 📍', {
+        body: `Local "${name}" foi salvo nos seus favoritos!`
+      }).catch(console.error);
       showToast(`Local "${newPlace.name}" salvo como ${category}!`);
     }
     setSelectedPlaceToView(null);
@@ -1260,6 +1258,9 @@ export default function App() {
           }}
           onNavigate={() => {
             // Simply trigger internal navigation mode without blocking confirm
+            sendAppNotification('Navegação Iniciada 🧭', {
+              body: `Navegando em tempo real até "${selectedPlaceToView.name}"`
+            }).catch(console.error);
             setNavigationTarget({ lat: selectedPlaceToView.lat, lng: selectedPlaceToView.lng });
             setSelectedPlaceToView(null);
             setIsSavedSidebarOpen(false);
@@ -1340,6 +1341,9 @@ export default function App() {
           });
         }}
         onNavigate={(place) => {
+          sendAppNotification('Navegação Iniciada 🧭', {
+            body: `Navegando em tempo real até "${place.name}"`
+          }).catch(console.error);
           setNavigationTarget({ lat: place.lat, lng: place.lng });
           setSelectedPlaceToView(null);
           setTracking(true);
@@ -1377,6 +1381,9 @@ export default function App() {
           }}
           onNavigate={(place) => {
             setIsRadarModalOpen(false);
+            sendAppNotification('Navegação Iniciada 🧭', {
+              body: `Navegando em tempo real até "${place.name}"`
+            }).catch(console.error);
             setNavigationTarget({ lat: place.lat, lng: place.lng });
             setSelectedPlaceToView(null);
             setTracking(true);
@@ -1412,6 +1419,9 @@ export default function App() {
           }}
           onNavigate={(place) => {
             setActiveRadarAlert(null);
+            sendAppNotification('Navegação Iniciada 🧭', {
+              body: `Navegando em tempo real até "${place.name}"`
+            }).catch(console.error);
             setNavigationTarget({ lat: place.lat, lng: place.lng });
             setSelectedPlaceToView(null);
             setTracking(true);
