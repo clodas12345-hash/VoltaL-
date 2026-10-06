@@ -27,7 +27,7 @@ jobs:
     - name: Install Project Dependencies
       run: |
         npm install --legacy-peer-deps
-        npm install --legacy-peer-deps @capacitor/core @capacitor/cli @capacitor/android sharp
+        npm install --legacy-peer-deps @capacitor/core @capacitor/cli @capacitor/android @capacitor/app @capacitor/local-notifications sharp
 
     - name: Build Web Application
       run: |
