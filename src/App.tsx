@@ -17,6 +17,7 @@ import { getDistanceMeters, normalizeText, generateDemoRadarPlaces } from './uti
 import { isValidAttachment } from './utils/fileAttachment';
 import { requestNotificationPermission, sendAppNotification } from './utils/notifications';
 import { ICON_BASE64 } from './iconBase64';
+import { App as CapApp } from '@capacitor/app';
 
 const STORAGE_KEY = 'google_maps_favoritos_places_v1';
 const RADAR_CONFIG_KEY = 'voltala_radar_config_v1';
@@ -307,6 +308,76 @@ export default function App() {
   const [activeRadarAlert, setActiveRadarAlert] = useState<RadarAlert | null>(null);
   const [radarDetectedPlaces, setRadarDetectedPlaces] = useState<MapPinType[]>([]);
   const radarAlertedPlaceIdsRef = useRef<Set<string>>(new Set());
+
+  // Trata o botão voltar físico/sistema do celular Android para nunca fechar o app.
+  // Se estiver em qualquer tela que não seja a inicial, volta para a tela inicial.
+  // Se já estiver na tela inicial, não faz nada.
+  const handleBackButtonAction = () => {
+    const isNotInitialScreen = Boolean(
+      isSettingsOpen ||
+      isSavedSidebarOpen ||
+      isRadarModalOpen ||
+      isProximityModalOpen ||
+      selectedPlaceToView ||
+      inAppBrowserUrl ||
+      activeRadarAlert ||
+      pendingPin ||
+      isPinningMode ||
+      navigationTarget
+    );
+
+    if (isNotInitialScreen) {
+      // Volta para a tela inicial fechando todas as telas secundárias, modais e modos de navegação
+      setIsSettingsOpen(false);
+      setIsSavedSidebarOpen(false);
+      setIsRadarModalOpen(false);
+      setIsProximityModalOpen(false);
+      setSelectedPlaceToView(null);
+      setInAppBrowserUrl(null);
+      setActiveRadarAlert(null);
+      setPendingPin(null);
+      setIsPinningMode(false);
+      if (navigationTarget) {
+        setNavigationTarget(null);
+        setIsSimulatingDrive(false);
+      }
+    } else {
+      // Já está na tela inicial: não faz nada (o app nunca fecha)
+    }
+  };
+
+  const handleBackButtonRef = useRef(handleBackButtonAction);
+  handleBackButtonRef.current = handleBackButtonAction;
+
+  useEffect(() => {
+    let isMounted = true;
+    let listenerHandle: { remove: () => Promise<void> | void } | null = null;
+
+    const setupBackButton = async () => {
+      try {
+        const handle = await CapApp.addListener('backButton', () => {
+          handleBackButtonRef.current();
+        });
+
+        if (!isMounted) {
+          handle.remove();
+        } else {
+          listenerHandle = handle;
+        }
+      } catch (err) {
+        console.warn('CapApp.addListener backButton falhou ou ambiente web:', err);
+      }
+    };
+
+    setupBackButton();
+
+    return () => {
+      isMounted = false;
+      if (listenerHandle) {
+        listenerHandle.remove();
+      }
+    };
+  }, []);
 
   // Save radar config on change
   const handleUpdateRadarConfig = (newConfig: RadarConfig) => {
