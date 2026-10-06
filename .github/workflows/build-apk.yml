@@ -44,42 +44,11 @@ jobs:
           npx --yes @capacitor/cli add android
         fi
 
-        # Injeta todas as 32 permissões e notificações no AndroidManifest de forma robusta
         MANIFEST="android/app/src/main/AndroidManifest.xml"
         if [ -f "$MANIFEST" ]; then
-          sed -i '/<application/i \
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />\
-    <uses-permission android:name="android.permission.INTERNET" />\
-    <uses-permission android:name="android.permission.CAMERA" />\
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />\
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />\
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />\
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\
-    <uses-permission android:name="android.permission.VIBRATE" />\
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />\
-    <uses-permission android:name="android.permission.BLUETOOTH" />\
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />\
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\
-    <uses-permission android:name="android.permission.READ_CONTACTS" />\
-    <uses-permission android:name="android.permission.WRITE_CONTACTS" />\
-    <uses-permission android:name="android.permission.GET_ACCOUNTS" />\
-    <uses-permission android:name="android.permission.READ_CALL_LOG" />\
-    <uses-permission android:name="android.permission.WRITE_CALL_LOG" />\
-    <uses-permission android:name="android.permission.CALL_PHONE" />\
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" />\
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />\
-    <uses-permission android:name="android.permission.BODY_SENSORS" />\
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />\
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />\
-    <uses-permission android:name="android.permission.WAKE_LOCK" />\
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />' "$MANIFEST"
+          for P in ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION ACCESS_BACKGROUND_LOCATION INTERNET CAMERA READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE MANAGE_EXTERNAL_STORAGE READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_AUDIO POST_NOTIFICATIONS VIBRATE SCHEDULE_EXACT_ALARM RECORD_AUDIO BLUETOOTH BLUETOOTH_CONNECT BLUETOOTH_SCAN BLUETOOTH_ADMIN READ_CONTACTS WRITE_CONTACTS GET_ACCOUNTS READ_CALL_LOG WRITE_CALL_LOG CALL_PHONE READ_PHONE_STATE ACTIVITY_RECOGNITION BODY_SENSORS SYSTEM_ALERT_WINDOW REQUEST_IGNORE_BATTERY_OPTIMIZATIONS WAKE_LOCK FOREGROUND_SERVICE; do
+            sed -i "/<application/i <uses-permission android:name=\"android.permission.$P\" />" "$MANIFEST"
+          done
         fi
 
         # Auto-incrementa versionCode para permitir instalar a atualização por cima sem desinstalar
