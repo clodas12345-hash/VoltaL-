@@ -85,20 +85,59 @@ async function generateIcons() {
     }
 
     if (sharp) {
-      await sharp(iconSrc)
-        .resize(item.size, item.size, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
+      const fgLogoSize = Math.round(item.fgSize * 0.6);
+      const fgLogoBuffer = await sharp(iconSrc)
+        .resize(fgLogoSize, fgLogoSize, {
+          fit: 'contain',
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
+        })
+        .png()
+        .toBuffer();
+
+      await sharp({
+        create: {
+          width: item.fgSize,
+          height: item.fgSize,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
+        }
+      })
+        .composite([{ input: fgLogoBuffer, gravity: 'center' }])
+        .png()
+        .toFile(path.join(targetFolder, 'ic_launcher_foreground.png'));
+
+      const launcherLogoSize = Math.round(item.size * 0.6);
+      const launcherLogoBuffer = await sharp(iconSrc)
+        .resize(launcherLogoSize, launcherLogoSize, {
+          fit: 'contain',
+          background: { r: 255, g: 255, b: 255, alpha: 0 }
+        })
+        .png()
+        .toBuffer();
+
+      await sharp({
+        create: {
+          width: item.size,
+          height: item.size,
+          channels: 4,
+          background: { r: 255, g: 255, b: 255, alpha: 1 }
+        }
+      })
+        .composite([{ input: launcherLogoBuffer, gravity: 'center' }])
         .png()
         .toFile(path.join(targetFolder, 'ic_launcher.png'));
 
-      await sharp(iconSrc)
-        .resize(item.size, item.size, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
+      await sharp({
+        create: {
+          width: item.size,
+          height: item.size,
+          channels: 4,
+          background: { r: 255, g: 255, b: 255, alpha: 1 }
+        }
+      })
+        .composite([{ input: launcherLogoBuffer, gravity: 'center' }])
         .png()
         .toFile(path.join(targetFolder, 'ic_launcher_round.png'));
-
-      await sharp(iconSrc)
-        .resize(item.fgSize, item.fgSize, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 0 } })
-        .png()
-        .toFile(path.join(targetFolder, 'ic_launcher_foreground.png'));
     } else {
       fs.copyFileSync(iconSrc, path.join(targetFolder, 'ic_launcher.png'));
       fs.copyFileSync(iconSrc, path.join(targetFolder, 'ic_launcher_round.png'));
