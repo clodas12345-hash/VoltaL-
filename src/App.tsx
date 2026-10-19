@@ -9,15 +9,16 @@ import { SearchProximityListModal } from './components/SearchProximityListModal'
 import { RadarModal } from './components/RadarModal';
 import { RadarAlertPopup } from './components/RadarAlertPopup';
 import { SavedPlace, MapPin as MapPinType, PlaceCategory, RadarConfig, RadarAlert, getZoomForRadius } from './types';
-import { Compass, Navigation, Bookmark, Plus, MapPin, X, Radio } from 'lucide-react';
+import { Compass, Navigation, Bookmark, Plus, MapPin, X, Radio, Bell } from 'lucide-react';
 import { InAppBrowser } from './components/InAppBrowser';
 import { REAL_SP_ESTABLISHMENTS } from './data/establishments';
 import { playRadarDetectionChime } from './utils/audio';
 import { getDistanceMeters, normalizeText, generateDemoRadarPlaces } from './utils/radarScanner';
 import { isValidAttachment } from './utils/fileAttachment';
-import { requestNotificationPermission, sendAppNotification } from './utils/notifications';
+import { requestNotificationPermission, sendAppNotification, scheduleTestNotificationIn5Seconds } from './utils/notifications';
 import { ICON_BASE64 } from './iconBase64';
 import { App as CapApp } from '@capacitor/app';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 const STORAGE_KEY = 'google_maps_favoritos_places_v1';
 const RADAR_CONFIG_KEY = 'voltala_radar_config_v1';
@@ -308,6 +309,72 @@ export default function App() {
   const [activeRadarAlert, setActiveRadarAlert] = useState<RadarAlert | null>(null);
   const [radarDetectedPlaces, setRadarDetectedPlaces] = useState<MapPinType[]>([]);
   const radarAlertedPlaceIdsRef = useRef<Set<string>>(new Set());
+
+  // Estado e inicialização de notificações locais Android 13+ (Samsung) ao abrir o app
+  const [notificationPermissionStatus, setNotificationPermissionStatus] = useState<'granted' | 'denied'>('denied');
+
+  useEffect(() => {
+    const initLocalNotifications = async () => {
+      try {
+        // 1. Solicitar a permissão POST_NOTIFICATIONS do Android 13 ao abrir o app
+        const permResult = await LocalNotifications.requestPermissions();
+        const status = permResult.display === 'granted' ? 'granted' : 'denied';
+        setNotificationPermissionStatus(status);
+
+        // 2. Criar o canal "padrao" antes de agendar qualquer notificação
+        await LocalNotifications.createChannel({
+          id: 'padrao',
+          name: 'Notificações Padrão',
+          description: 'Canal padrão de notificações do VoltaLá',
+          importance: 5,
+          visibility: 1,
+          vibration: true,
+        });
+      } catch (err) {
+        console.warn('Inicialização LocalNotifications (web/fallback):', err);
+        const fallbackStatus = await requestNotificationPermission();
+        setNotificationPermissionStatus(fallbackStatus);
+      }
+    };
+
+    initLocalNotifications();
+  }, []);
+
+  const handleTestNotification5Seconds = async () => {
+    try {
+      const permResult = await LocalNotifications.requestPermissions();
+      const status = permResult.display === 'granted' ? 'granted' : 'denied';
+      setNotificationPermissionStatus(status);
+
+      await LocalNotifications.createChannel({
+        id: 'padrao',
+        name: 'Notificações Padrão',
+        description: 'Canal padrão de notificações do VoltaLá',
+        importance: 5,
+        visibility: 1,
+        vibration: true,
+      });
+
+      const uniqueId = Math.floor(Date.now() % 100000000) + Math.floor(Math.random() * 1000);
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            channelId: 'padrao',
+            id: uniqueId,
+            title: 'VoltaLá 📡 Teste de Notificação',
+            body: 'Notificação local disparada 5 segundos após o clique!',
+            smallIcon: 'ic_stat_icon_config_sample',
+            schedule: { at: new Date(Date.now() + 5000) },
+          },
+        ],
+      });
+      showToast('Notificação agendada! Será exibida em 5 segundos.');
+    } catch (err) {
+      const fallbackPerm = await scheduleTestNotificationIn5Seconds();
+      setNotificationPermissionStatus(fallbackPerm);
+      showToast('Notificação agendada! Será exibida em 5 segundos.');
+    }
+  };
 
   // Trata o botão voltar físico/sistema do celular Android para nunca fechar o app.
   // Se estiver em qualquer tela que não seja a inicial, volta para a tela inicial.
@@ -897,7 +964,7 @@ export default function App() {
     const existingIndex = savedPlaces.findIndex(
       (p) => 
         (place.placeId && p.id === place.placeId) ||
-        (Math.abs(p.lat - place.lat) < 0.0001 && Math.abs(p.lng - place.lng) < 0.0001)
+        (p.lat === place.lat && p.lng === place.lng)
     );
 
     if (existingIndex >= 0) {
@@ -938,7 +1005,7 @@ export default function App() {
     const existingIndex = savedPlaces.findIndex(
       (p) => 
         (selectedPlaceToView.placeId && p.id === selectedPlaceToView.placeId) ||
-        (Math.abs(p.lat - selectedPlaceToView.lat) < 0.0001 && Math.abs(p.lng - selectedPlaceToView.lng) < 0.0001)
+        (p.lat === selectedPlaceToView.lat && p.lng === selectedPlaceToView.lng)
     );
 
     if (existingIndex >= 0) {
@@ -1112,7 +1179,7 @@ export default function App() {
     ? savedPlaces.find(
         (p) =>
           (selectedPlaceToView.placeId && p.id === selectedPlaceToView.placeId) ||
-          (Math.abs(p.lat - selectedPlaceToView.lat) < 0.0001 && Math.abs(p.lng - selectedPlaceToView.lng) < 0.0001)
+          (p.lat === selectedPlaceToView.lat && p.lng === selectedPlaceToView.lng)
       )
     : undefined;
 
@@ -1505,6 +1572,23 @@ export default function App() {
             showToast(`Navegando até ${place.name}`);
           }}
         />
+      )}
+
+      {/* Barra de Depuração de Permissão e Teste de Notificação Local (Android 13+) */}
+      {!isStreetViewActive && !navigationTarget && (
+        <div className="fixed bottom-4 left-3 z-30 flex items-center gap-2 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg border border-slate-200 pointer-events-auto">
+          <span className="text-[11px] font-semibold text-slate-600">
+            Permissão: <strong className={notificationPermissionStatus === 'granted' ? 'text-emerald-600' : 'text-rose-600'}>{notificationPermissionStatus}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={handleTestNotification5Seconds}
+            className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1 rounded-full shadow-xs flex items-center gap-1 transition-all cursor-pointer"
+          >
+            <Bell className="w-3 h-3" />
+            <span>Testar notificação</span>
+          </button>
+        </div>
       )}
 
       {/* Toast Notification */}

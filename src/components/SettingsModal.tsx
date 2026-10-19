@@ -80,19 +80,19 @@ export function SettingsModal({
   const checkNotifPermission = async () => {
     try {
       const status = await LocalNotifications.checkPermissions();
-      setNotifStatus(status.display === 'granted' ? 'Concedido' : status.display === 'denied' ? 'Negado' : 'Aguardando');
+      setNotifStatus(status.display === 'granted' ? 'granted' : 'denied');
     } catch (e) {
       if ('Notification' in window) {
-        setNotifStatus(Notification.permission === 'granted' ? 'Concedido' : Notification.permission === 'denied' ? 'Negado' : 'Aguardando');
+        setNotifStatus(Notification.permission === 'granted' ? 'granted' : 'denied');
       } else {
-        setNotifStatus('Não suportado');
+        setNotifStatus('denied');
       }
     }
   };
 
   const requestNotifPermission = async () => {
-    const granted = await requestNotificationPermission();
-    setNotifStatus(granted ? 'Concedido' : 'Negado');
+    const perm = await requestNotificationPermission();
+    setNotifStatus(perm);
   };
 
   const checkCameraPermission = async () => {
@@ -227,8 +227,11 @@ export function SettingsModal({
   };
 
   const triggerTestNotification = async () => {
+    const perm = await requestNotificationPermission();
+    setNotifStatus(perm);
     await sendAppNotification('VoltaLá 📡 Teste de Notificação', {
-      body: 'As notificações do VoltaLá estão funcionando perfeitamente no seu dispositivo!'
+      body: 'As notificações locais do VoltaLá (5s) estão funcionando perfeitamente!',
+      delaySeconds: 5
     });
   };
 
@@ -658,7 +661,7 @@ export function SettingsModal({
                       </div>
                       <div className="min-w-0 flex-1">
                         <h4 className="text-xs font-bold text-slate-800">Notificações Push / Locais</h4>
-                        <p className="text-[10px] text-slate-500">Estado: <span className={`font-bold ${notifStatus === 'Concedido' ? 'text-emerald-600' : notifStatus === 'Negado' ? 'text-rose-500' : 'text-amber-500'}`}>{notifStatus}</span></p>
+                        <p className="text-[10px] text-slate-500">Status da permissão: <span className={`font-bold ${notifStatus === 'granted' || notifStatus === 'Concedido' ? 'text-emerald-600' : 'text-rose-500'}`}>{notifStatus}</span></p>
                       </div>
                     </div>
                     <button 
@@ -792,9 +795,9 @@ export function SettingsModal({
                 </div>
 
                 <div className="mt-5 pt-4 border-t border-slate-100 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Testar Notificação</h4>
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Testar Notificação (5s)</h4>
                   <p className="text-[10px] text-slate-500 leading-relaxed">
-                    Clique no botão abaixo para simular um alerta sonoro e de vibração imediato no aparelho, confirmando que as notificações em background estão ativadas.
+                    Clique no botão abaixo para agendar uma notificação local em 5 segundos no canal "padrao" (Android 13+).
                   </p>
                   <button
                     type="button"
@@ -802,7 +805,7 @@ export function SettingsModal({
                     className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Bell className="w-4 h-4 text-amber-400 fill-amber-400" />
-                    <span>Enviar Notificação de Teste</span>
+                    <span>Testar notificação</span>
                   </button>
                 </div>
               </div>

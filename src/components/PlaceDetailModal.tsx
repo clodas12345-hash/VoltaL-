@@ -73,7 +73,7 @@ export function PlaceDetailModal({
       const draft = sessionStorage.getItem(`draft_${place.placeId || place.lat}`);
       if (draft) return JSON.parse(draft).name;
     } catch (e) {}
-    return existingSaved?.name || place.name;
+    return existingSaved?.name || place.name || place.address || 'Local Favorito';
   });
   const [category, setCategory] = useState<PlaceCategory>(() => {
     try {
@@ -314,9 +314,9 @@ export function PlaceDetailModal({
 
   const handleSaveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    const finalName = name.trim() || place.name || place.address || 'Local Favorito';
     onSave({ 
-      name: name.trim(), 
+      name: finalName, 
       category, 
       notes, 
       customPhotos, 

@@ -163,8 +163,10 @@ async function generateIcons() {
     if (sharp) {
       const silBuf = await createSilhouetteBuffer(sharp, iconSrc, item.size);
       fs.writeFileSync(path.join(targetFolder, 'ic_stat_icon.png'), silBuf);
+      fs.writeFileSync(path.join(targetFolder, 'ic_stat_icon_config_sample.png'), silBuf);
     } else {
       fs.copyFileSync(iconSrc, path.join(targetFolder, 'ic_stat_icon.png'));
+      fs.copyFileSync(iconSrc, path.join(targetFolder, 'ic_stat_icon_config_sample.png'));
     }
   }
 
